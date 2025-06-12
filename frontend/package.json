@@ -1,6 +1,7 @@
 {
      "name": "music-blog-frontend",
      "version": "1.0.0",
+     "homepage": "https://wallkpop.vercel.app",
      "scripts": {
        "start": "react-scripts start",
        "build": "react-scripts build",
