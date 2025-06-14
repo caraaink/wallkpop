@@ -26,8 +26,6 @@ const db = new sqlite3.Database(':memory:', (err) => {
     bitrate TEXT,
     bitrate128 TEXT,
     bitrate320 TEXT,
-    availablebitrate128 TEXT,
-    availablebitrate320 TEXT,
     thumb TEXT,
     link TEXT,
     link2 TEXT,
@@ -35,8 +33,6 @@ const db = new sqlite3.Database(':memory:', (err) => {
     url320 TEXT,
     hits INTEGER DEFAULT 0,
     lyricstimestamp TEXT,
-    available TEXT,
-    availabletimestamp TEXT,
     name TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   )`);
@@ -57,6 +53,80 @@ const getFormattedDate = (format) => {
     'H:i': `${pad(date.getHours())}:${pad(date.getMinutes())}`
   };
   return formats[format] || date.toISOString().split('T')[0];
+};
+
+// Meta header template
+const getMetaHeader = (post = null, pageUrl = 'https://wallkpop.vercel.app/') => {
+  const isTrackPage = post !== null;
+  const title = isTrackPage ? `Download ${post.title} MP3 by ${post.artist} | Free Kpop Music` : 'Wallkpop | Download Latest K-Pop Music MP3';
+  const description = isTrackPage
+    ? `Download ${post.title} by ${post.artist} in MP3 format. Get the latest K-pop songs for free, only for promotional use. Support your favorite artist by buying the original track.`
+    : 'We are K-Pop lovers who spread the love for k-music. The site does not store any files on its server. All contents are for promotion only. Please support the artists by purchasing their CDs.';
+  const keywords = isTrackPage
+    ? `download kpop mp3, ${post.artist}, ${post.title} mp3, free kpop song, kpop download, ${post.title} download, korean pop music`
+    : 'KPop, Download KPop, KPop Music, KPop Songs, JPop, Download JPop, JPop Music, JPop Songs, CPop, Download CPop, CPop Music, CPop Songs, Ost KDrama, Lagu Soundtrack KDrama, Lagu Drama Korea, Lagu KPop Terbaru, Tangga Lagu KPop, Download K-Pop Latest Mp3';
+  const og = isTrackPage ? `
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="music.song">
+    <meta property="og:title" content="Download ${post.title} MP3 by ${post.artist}">
+    <meta property="og:description" content="Get ${post.title} MP3 by ${post.artist} for free. Listen before you buy.">
+    <meta property="og:image" content="${post.thumb || 'https://via.placeholder.com/150'}">
+    <meta property="og:url" content="${pageUrl}">
+    
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="${post.title} MP3 by ${post.artist}">
+    <meta name="twitter:description" content="Free download of ${post.title} by ${post.artist}. Support the artist.">
+    <meta name="twitter:image" content="${post.thumb || 'https://via.placeholder.com/150'}">
+    
+    <!-- Structured Data: JSON-LD -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "MusicRecording",
+      "name": "${post.title}",
+      "url": "${pageUrl}",
+      "duration": "PT${post.duration || '0'}M",
+      "inAlbum": {
+        "@type": "MusicAlbum",
+        "name": "${post.album || 'Unknown'}"
+      },
+      "byArtist": {
+        "@type": "MusicGroup",
+        "name": "${post.artist}"
+      },
+      "genre": "${post.genre || 'K-Pop'}",
+      "image": "${post.thumb || 'https://via.placeholder.com/150'}",
+      "datePublished": "${getFormattedDate('Y-m-d')}",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD",
+        "availability": "https://schema.org/InStock"
+      }
+    }
+    </script>
+  ` : '';
+
+  return `
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>${title}</title>
+    <meta name="description" content="${description}">
+    <meta name="keywords" content="${keywords}">
+    <meta name="author" content="Wallkpop">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="${pageUrl}">
+    <meta property="og:site_name" content="Wallkpop">
+    ${og}
+    <link rel="stylesheet" href="https://rawcdn.githack.com/caraaink/otakudesu/1ff200e0bc05d43443b4944b46532c4b4c3cc275/plyr.css" />
+    <script src="https://rawcdn.githack.com/caraaink/otakudesu/1ff200e0bc05d43443b4944b46532c4b4c3cc275/plyr.polyfilled.js"></script>
+    <link href="https://stackpath.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet" integrity="sha384-wvfXpqpZZVQGK6TAh5PVlGOfQNHSoD2xbE+QkPxCAFlNEevoEH3Sl0sibVcOQVnN" crossorigin="anonymous">
+    <link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" type="text/css" href="https://fastcdn.jdi5.com/css/wallkpop.wapkizs.com/style.css"/>
+    <meta name="google-site-verification" content="9e9RaAsVDPAkag708Q30S8xSw8_qIMm87FJBoJWzink" />
+    <meta name="yandex-verification" content="b507670596647101" />
+  `;
 };
 
 // Header template
@@ -133,8 +203,6 @@ const parseBlogTags = (template, posts, options = {}) => {
       .replace(/%var-bitrate%/g, post.bitrate || '192')
       .replace(/%var-bitrate128%/g, post.bitrate128 || '128')
       .replace(/%var-bitrate320%/g, post.bitrate320 || '320')
-      .replace(/%var-availablebitrate128%/g, post.availablebitrate128 || 'on')
-      .replace(/%var-availablebitrate320%/g, post.availablebitrate320 || 'off')
       .replace(/%var-thumb%/g, post.thumb || 'https://via.placeholder.com/150')
       .replace(/%var-link%/g, post.link || '#')
       .replace(/%var-link2%/g, post.link2 || '#')
@@ -142,17 +210,12 @@ const parseBlogTags = (template, posts, options = {}) => {
       .replace(/%var-url320%/g, post.url320 || post.link || '#')
       .replace(/%hits%/g, post.hits || 0)
       .replace(/%var-lyricstimestamp%/g, post.lyricstimestamp || '')
-      .replace(/%var-available%/g, post.available || 'off')
-      .replace(/%var-availabletimestamp%/g, post.availabletimestamp || 'off')
       .replace(/%var-name%/g, post.name || `${post.artist} - ${post.title}`)
       .replace(/%sn%/g, index + 1)
       .replace(/%date=Y-m-d%/g, getFormattedDate('Y-m-d'))
       .replace(/%text%/g, post.year || 'Unknown')
       .replace(/:url-1\(:to-file:\):/g, `/track/${post.id}/${generatePermalink(post.artist, post.title)}`)
-      .replace(/\[replace=\((.*?)\)\](.*?)\[\]/g, (match, condition, content) => {
-        const [value, ...replacements] = condition.split('[]');
-        return replacements.includes(post[value]) || !value ? content : '';
-      });
+      .replace(/:page_url:/g, `https://wallkpop.vercel.app/track/${post.id}/${generatePermalink(post.artist, post.title)}`);
     result += item;
   });
   return result;
@@ -174,8 +237,7 @@ app.get('/', (req, res) => {
             <p>Album: %var-album%</p>
             <div class="info-row">
               <span class="duration"><i class="fa fa-clock-o" aria-hidden="true"></i> %var-duration%</span>
-              <span class="genre">[replace=(%var-genre%)]%var-genre%||<i class="fa fa-file-audio-o" aria-hidden="true"></i> %var-genre%[/replace]</span>
-              <span class="lyrics">[replace=(%var-available%)]on[]off||<i class="fa fa-sticky-note-o" aria-hidden="true"></i> + Lyrics [][/replace]</span>
+              <span class="genre"><i class="fa fa-file-audio-o" aria-hidden="true"></i> %var-genre%</span>
             </div>
           </div>
         </div>
@@ -216,9 +278,8 @@ app.get('/', (req, res) => {
                   <font style="font-size:11px;line-height:1.5;">
                     <i class="fa fa-hdd-o" aria-hidden="true"></i> %var-size% MB -
                     <i class="fa fa-clock-o" aria-hidden="true"></i> %var-duration% -
-                    <i class="fa fa-calendar" aria-hidden="true"></i> %text%
-                    [replace=(%var-genre%)]%var-genre%|| - <i class="fa fa-file-audio-o" aria-hidden="true"></i> %var-genre%[/replace]
-                    [replace=(%var-available%)]on[]off|| - <i class="fa fa-sticky-note-o" aria-hidden="true"></i> + Lyrics [][/replace]
+                    <i class="fa fa-calendar" aria-hidden="true"></i> %text% -
+                    <i class="fa fa-file-audio-o" aria-hidden="true"></i> %var-genre%
                   </font>
                 </span>
               </td>
@@ -231,12 +292,9 @@ app.get('/', (req, res) => {
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Wallkpop | Download Latest K-Pop Music MP3</title>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+        ${getMetaHeader()}
         <style>
-          body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
+          body { font-family: 'Lora', Arial, sans-serif; margin: 0; padding: 0; }
           header { text-align: center; padding: 20px; background: #f4f4f4; }
           header h1 a { color: #333; text-decoration: none; }
           header h2 { color: #666; font-size: 1.2rem; }
@@ -314,7 +372,7 @@ app.get('/', (req, res) => {
             <div class="album">
               ${newUpdate}
               <div class="paging">
-                <span>1 of 1</span> <!-- Simplified paging, can be enhanced -->
+                <span>1 of 1</span> <!-- Simplified paging -->
               </div>
             </div>
           </div>
@@ -347,29 +405,25 @@ app.post('/panel', (req, res) => {
     'var-bitrate': bitrate,
     'var-bitrate128': bitrate128,
     'var-bitrate320': bitrate320,
-    'var-availablebitrate128': availablebitrate128,
-    'var-availablebitrate320': availablebitrate320,
     'var-thumb': thumb,
     'var-link': link,
     'var-link2': link2,
     'var-url128': url128,
     'var-url320': url320,
     'var-lyricstimestamp': lyricstimestamp,
-    'var-available': available,
-    'var-availabletimestamp': availabletimestamp,
     'var-name': name
   } = req.body;
 
   db.run(
     `INSERT INTO posts (
       artist, title, year, album, genre, duration, size, size128, size320,
-      bitrate, bitrate128, bitrate320, availablebitrate128, availablebitrate320,
-      thumb, link, link2, url128, url320, lyricstimestamp, available, availabletimestamp, name
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      bitrate, bitrate128, bitrate320, thumb, link, link2, url128, url320,
+      lyricstimestamp, name
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       artist, title, year, album, genre, duration, size, size128, size320,
-      bitrate, bitrate128, bitrate320, availablebitrate128, availablebitrate320,
-      thumb, link, link2, url128, url320, lyricstimestamp, available, availabletimestamp, name
+      bitrate, bitrate128, bitrate320, thumb, link, link2, url128, url320,
+      lyricstimestamp, name
     ],
     function(err) {
       if (err) return res.status(500).send('Error saving post');
@@ -418,7 +472,6 @@ app.get('/track/:id/:permalink', (req, res) => {
                   <tr><td>Genre</td><td>:</td><td>%var-genre%</td></tr>
                   <tr><td>Duration</td><td>:</td><td>%var-duration% minutes</td></tr>
                   <tr><td>Bitrate</td><td>:</td><td>128, 192, 320 Kbps</td></tr>
-                  <tr><td>Lyrics</td><td>:</td><td>[replace=(%var-available%)]on[]off||<a href="/site-lyrics.html?to-file=%id%">View Lyrics</a>[]<del>Not Available</del>[/replace]</td></tr>
                   <tr><td>View</td><td>:</td><td>%hits%</td></tr>
                 </tbody>
               </table>
@@ -438,12 +491,15 @@ app.get('/track/:id/:permalink', (req, res) => {
             <script src="https://cdn.jsdelivr.net/gh/caraaink/meownime@refs/heads/main/javascript/audio-lyrics-timestamp.js"></script>
             <div style="text-align: center;"><br>
               <div class="download-buttons">
-                [replace=(%var-availablebitrate320%)]on[]off[]https:[]http:[]#||<a href="//meownime.wapkizs.com/page-convert.html?to-thumb=%var-thumb%&to-size=%var-size320%&to-link2=%var-url320%&to-artist=%var-artist%&to-title=%var-title%&to-link=%var-link%&to-sizeori=%var-size320%" target="_blank">
-                  <button class="downd bitrate-320"><span class="hq-label">HQ</span><div class="title">Download Now</div><div class="size">(%var-size320%)</div><span class="bitrate">%var-bitrate320% kb/s</span></button></a>[][][][][/replace]
+                <a href="//meownime.wapkizs.com/page-convert.html?to-thumb=%var-thumb%&to-size=%var-size320%&to-link2=%var-url320%&to-artist=%var-artist%&to-title=%var-title%&to-link=%var-link%&to-sizeori=%var-size320%" target="_blank">
+                  <button class="downd bitrate-320"><span class="hq-label">HQ</span><div class="title">Download Now</div><div class="size">(%var-size320%)</div><span class="bitrate">%var-bitrate320% kb/s</span></button>
+                </a>
                 <a href="//meownime.wapkizs.com/page-convert.html?to-thumb=%var-thumb%&to-size=%var-size%&to-link2=%var-link2%&to-artist=%var-artist%&to-title=%var-title%&to-link=%var-link%&to-sizeori=%var-size%" target="_blank">
-                  <button class="downd bitrate-192"><span class="medium-label">MQ</span><div class="title">Download Now</div><div class="size">(%var-size%)</div><span class="bitrate">%var-bitrate% kb/s</span></button></a>
-                [replace=(%var-availablebitrate128%)]on[]off[]https:[]http:[]#||<a href="//meownime.wapkizs.com/page-convert.html?to-thumb=%var-thumb%&to-size=%var-size128%&to-link2=%var-url128%&to-artist=%var-artist%&to-title=%var-title%&to-link=%var-link%&to-sizeori=%var-size128%" target="_blank">
-                  <button class="downd bitrate-128"><span class="low-label">LQ</span><div class="title">Download Now</div><div class="size">(%var-size128%)</div><span class="bitrate">%var-bitrate128% kb/s</span></button></a>[][][][][/replace]
+                  <button class="downd bitrate-192"><span class="medium-label">MQ</span><div class="title">Download Now</div><div class="size">(%var-size%)</div><span class="bitrate">%var-bitrate% kb/s</span></button>
+                </a>
+                <a href="//meownime.wapkizs.com/page-convert.html?to-thumb=%var-thumb%&to-size=%var-size128%&to-link2=%var-url128%&to-artist=%var-artist%&to-title=%var-title%&to-link=%var-link%&to-sizeori=%var-size128%" target="_blank">
+                  <button class="downd bitrate-128"><span class="low-label">LQ</span><div class="title">Download Now</div><div class="size">(%var-size128%)</div><span class="bitrate">%var-bitrate128% kb/s</span></button>
+                </a>
               </div>
             </div>
             <br>
@@ -472,7 +528,9 @@ app.get('/track/:id/:permalink', (req, res) => {
               </span>
             </div>
             <br>
-            [replace=(%var-availabletimestamp%)]on[]off||<div class="note"><h3>Lyrics %var-name%</h3>%var-lyricstimestamp%</div>[]<div class="note"> Download the latest song <strong>%var-artist% - %var-title%.mp3</strong> for free from trusted sources like wallkpop, ilkpop, matikiri, StafaBand, Planetlagu, and others. This content is provided for preview and promotional use only. Please support the artist by buying the original track from official platforms such as iTunes, Spotify, or Amazon. We do not host any files and are not responsible for user downloads. </div>[/replace]
+            <div class="note">
+              Download the latest song <strong>%var-artist% - %var-title%.mp3</strong> for free from trusted sources like wallkpop, ilkpop, matikiri, StafaBand, Planetlagu, and others. This content is provided for preview and promotional use only. Please support the artist by buying the original track from official platforms such as iTunes, Spotify, or Amazon. We do not host any files and are not responsible for user downloads.
+            </div>
           </div>
         </div>`, [post], { noMessage: 'No Post' });
 
@@ -480,12 +538,9 @@ app.get('/track/:id/:permalink', (req, res) => {
         <!DOCTYPE html>
         <html>
         <head>
-          <title>Download ${post.artist} - ${post.title} MP3 | Free Kpop Music</title>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+          ${getMetaHeader(post, `https://wallkpop.vercel.app/track/${id}/${req.params.permalink}`)}
           <style>
-            body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
+            body { font-family: 'Lora', Arial, sans-serif; margin: 0; padding: 0; }
             header { text-align: center; padding: 20px; background: #f4f4f4; }
             header h1 a { color: #333; text-decoration: none; }
             header h2 { color: #666; font-size: 1.2rem; }
@@ -531,6 +586,7 @@ app.get('/track/:id/:permalink', (req, res) => {
             .container { text-align: center; }
             .list .lagu { margin: 10px 0; }
             .list .lagu a { color: #007bff; text-decoration: none; }
+            .note { margin: 20px auto; max-width: 600px; }
           </style>
         </head>
         <body>
@@ -576,9 +632,8 @@ app.get('/search/:query', (req, res) => {
                   <font style="font-size:11px;line-height:1.5;">
                     <i class="fa fa-hdd-o" aria-hidden="true"></i> %var-size% MB -
                     <i class="fa fa-clock-o" aria-hidden="true"></i> %var-duration% -
-                    <i class="fa fa-calendar" aria-hidden="true"></i> %text%
-                    [replace=(%var-genre%)]%var-genre%|| - <i class="fa fa-file-audio-o" aria-hidden="true"></i> %var-genre%[/replace]
-                    [replace=(%var-available%)]on[]off|| - <i class="fa fa-sticky-note-o" aria-hidden="true"></i> + Lyrics [][/replace]
+                    <i class="fa fa-calendar" aria-hidden="true"></i> %text% -
+                    <i class="fa fa-file-audio-o" aria-hidden="true"></i> %var-genre%
                   </font>
                 </span>
               </td>
@@ -591,12 +646,9 @@ app.get('/search/:query', (req, res) => {
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Search Results for "${req.params.query}" | Wallkpop</title>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+        ${getMetaHeader(null, `https://wallkpop.vercel.app/search/${req.params.query}`)}
         <style>
-          body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
+          body { font-family: 'Lora', Arial, sans-serif; margin: 0; padding: 0; }
           header { text-align: center; padding: 20px; background: #f4f4f4; }
           header h1 a { color: #333; text-decoration: none; }
           header h2 { color: #666; font-size: 1.2rem; }
@@ -624,11 +676,11 @@ app.get('/search/:query', (req, res) => {
           <div class="album">
             ${searchResults}
             <div class="paging">
-              <span>1 of 1</span> <!-- Simplified paging, can be enhanced -->
+              <span>1 of 1</span> <!-- Simplified paging -->
             </div>
           </div>
         </div>
-        ${getFooter('https://wallkpop.vercel.app/search/' + req.params.query)}
+        ${getFooter(`https://wallkpop.vercel.app/search/${req.params.query}`)}
       </body>
       </html>
     `;
@@ -640,20 +692,20 @@ app.get('/search/:query', (req, res) => {
 app.post('/api/post', (req, res) => {
   const {
     artist, title, year, album, genre, duration, size, size128, size320,
-    bitrate, bitrate128, bitrate320, availablebitrate128, availablebitrate320,
-    thumb, link, link2, url128, url320, lyricstimestamp, available, availabletimestamp, name
+    bitrate, bitrate128, bitrate320, thumb, link, link2, url128, url320,
+    lyricstimestamp, name
   } = req.body;
   if (!artist || !title || !year) return res.status(400).json({ error: 'Missing required fields' });
   db.run(
     `INSERT INTO posts (
       artist, title, year, album, genre, duration, size, size128, size320,
-      bitrate, bitrate128, bitrate320, availablebitrate128, availablebitrate320,
-      thumb, link, link2, url128, url320, lyricstimestamp, available, availabletimestamp, name
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      bitrate, bitrate128, bitrate320, thumb, link, link2, url128, url320,
+      lyricstimestamp, name
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       artist, title, year, album, genre, duration, size, size128, size320,
-      bitrate, bitrate128, bitrate320, availablebitrate128, availablebitrate320,
-      thumb, link, link2, url128, url320, lyricstimestamp, available, availabletimestamp, name
+      bitrate, bitrate128, bitrate320, thumb, link, link2, url128, url320,
+      lyricstimestamp, name
     ],
     function(err) {
       if (err) return res.status(500).json({ error: 'Error saving post' });
