@@ -26,6 +26,39 @@ const generatePermalink = (artist, title) => {
   return slugify(`${artist}-${title}`, { lower: true, strict: true, remove: /[*+~.()'"!:@]/g });
 };
 
+// Root route (NEW)
+app.get('/', (req, res) => {
+  db.all('SELECT id, artist, title FROM posts ORDER BY created_at DESC LIMIT 10', (err, posts) => {
+    if (err) return res.status(500).send('Error fetching posts');
+    let html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>WallKpop</title>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+          body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+          ul { list-style: none; padding: 0; }
+          li { margin: 10px 0; }
+          a { color: #007bff; text-decoration: none; }
+          a:hover { text-decoration: underline; }
+        </style>
+      </head>
+      <body>
+        <h1>Welcome to WallKpop</h1>
+        <p><a href="/panel">Create New Post</a></p>
+        <h2>Recent Posts</h2>
+        <ul>
+          ${posts.map(p => `<li><a href="/track/${p.id}/${generatePermalink(p.artist, p.title)}">${p.artist} - ${p.title}</a></li>`).join('')}
+        </ul>
+      </body>
+      </html>
+    `;
+    res.send(html);
+  });
+});
+
 // Panel for manual input
 app.get('/panel', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
