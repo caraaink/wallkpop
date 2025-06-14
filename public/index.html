@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Post Panel</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; }
+    .form-group { margin-bottom: 15px; }
+    label { display: block; margin-bottom: 5px; }
+    input[type="text"] { width: 100%; padding: 8px; font-size: 16px; }
+    input[type="submit"] { padding: 10px 20px; background: #007bff; color: white; border: none; cursor: pointer; }
+    input[type="submit"]:hover { background: #0056b3; }
+  </style>
+</head>
+<body>
+  <h1>Create New Post</h1>
+  <form action="/panel" method="POST">
+    <div class="form-group">
+      <label for="var-artist">Artist</label>
+      <input type="text" name="var-artist" id="var-artist" autocomplete="off" required>
+    </div>
+    <div class="form-group">
+      <label for="var-title">Title</label>
+      <input type="text" name="var-title" id="var-title" autocomplete="off" required>
+    </div>
+    <div class="form-group">
+      <label for="var-year">Year</label>
+      <input type="text" name="var-year" id="var-year" autocomplete="off" required>
+    </div>
+    <input type="submit" value="Submit">
+  </form>
+</body>
+</html>
