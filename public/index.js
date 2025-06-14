@@ -12,7 +12,7 @@ app.use(express.static('public'));
 // Function to initialize database and create table
 function initializeDatabase() {
   return new Promise((resolve, reject) => {
-    const db = new sqlite3.Database(':memory:', (err) => {
+    const db = new sqlite3.Database(path.join(__dirname, 'public', 'posts.db'), (err) => {
       if (err) {
         console.error('Database initialization error:', err);
         return reject(err);
@@ -267,25 +267,79 @@ app.use((req, res, next) => {
   next();
 });
 
-// Root route
+// Root route to list all posts
 app.get('/', (req, res) => {
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      ${getMetaHeader()}
-    </head>
-    <body>
-      ${getHeader()}
-      <div id="content">
-        <h1>Welcome to Wallkpop</h1>
-        <p>Download the latest K-Pop music and soundtracks. Use the search or browse our collection!</p>
-      </div>
-      ${getFooter('https://wallkpop.vercel.app/')}
-    </body>
-    </html>
-  `;
-  res.send(html);
+  db.all('SELECT * FROM posts ORDER BY created_at DESC LIMIT 10', (err, posts) => {
+    if (err) {
+      console.error('Error fetching posts:', err);
+      return res.status(500).send('Error loading posts');
+    }
+    const postList = parseBlogTags(`
+      <div class="album-list">
+        <table>
+          <tbody>
+            <tr valign="top">
+              <td class="kpops-list-thumb" align="center">
+                <div style="position: relative; display: inline-block; width: 60px; height: 55px;">
+                  <img class="thumb" src="%var-thumb%" alt="%var-artist% - %var-title%.mp3" width="60px" height="55px" style="display: block;">
+                  <span style="position: absolute; bottom: -4px; right: -4px; font-size: 8px; color: #ffffff; background: rgba(0, 0, 0, 0.4); padding: 1px 3px; border-radius: 1px; line-height: 1.2; max-width: 89%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                    <i class="fa fa-eye" aria-hidden="true"></i> %hits%
+                  </span>
+                </div>
+              </td>
+              <td align="left">
+                <span>
+                  <a title="Download %title% mp3" href="/track/%id%/${generatePermalink('%var-artist%', '%var-title%')}"><b>%var-artist% - %var-title%</b></a><br>
+                  <font style="font-size:12px;line-height:2;"><i class="fa fa-audio-description" aria-hidden="true"></i> %var-album%</font><br>
+                  <font style="font-size:11px;line-height:1.5;">
+                    <i class="fa fa-hdd-o" aria-hidden="true"></i> %var-size% MB -
+                    <i class="fa fa-clock-o" aria-hidden="true"></i> %var-duration% -
+                    <i class="fa fa-calendar" aria-hidden="true"></i> %text% -
+                    <i class="fa fa-file-audio-o" aria-hidden="true"></i> %var-genre%
+                  </font>
+                </span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>`, posts, { limit: 10, noMessage: '<center>No posts available</center>' });
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        ${getMetaHeader(null, 'https://wallkpop.vercel.app/')}
+        <style>
+          body { font-family: 'Lora', Arial, sans-serif; margin: 0; padding: 0; }
+          header { text-align: center; padding: 20px; background: #f4f4f4; }
+          header h1 a { color: #333; text-decoration: none; }
+          header h2 { color: #666; font-size: 1.2rem; }
+          nav ul { list-style: none; padding: 0; display: flex; justify-content: center; gap: 20px; }
+          nav ul li a { color: #007bff; text-decoration: none; }
+          #search { margin: 20px auto; max-width: 600px; }
+          #search form { display: flex; gap: 10px; }
+          .inp-text { padding: 8px; width: 80%; border: 1px solid #ddd; border-radius: 4px; }
+          .inp-btn { padding: 8px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+          .inp-btn:hover { background: #0056b3; }
+          footer { text-align: center; padding: 20px; background: #f4f4f4; margin-top: 20px; }
+          .footer .center { margin: 10px 0; }
+          .kiri, .kanan { display: inline-block; margin: 0 10px; }
+          .album-list table { width: 100%; border-collapse: collapse; }
+          .album-list td { padding: 5px; vertical-align: top; }
+        </style>
+      </head>
+      <body>
+        ${getHeader()}
+        <div id="content">
+          <h1>Latest Uploaded Tracks</h1>
+          ${postList}
+        </div>
+        ${getFooter('https://wallkpop.vercel.app/')}
+      </body>
+      </html>
+    `;
+    res.send(html);
+  });
 });
 
 // Panel route
@@ -528,7 +582,6 @@ app.get('/search/:query', (req, res) => {
       <html>
       <head>
         ${getMetaHeader(null, `https://wallkpop.vercel.app/search/${req.params.query}`)}
-        
       </head>
       <body>
         ${getHeader(req.params.query)}
