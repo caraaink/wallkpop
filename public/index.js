@@ -157,7 +157,7 @@ const getMetaHeader = (post = null, pageUrl = 'https://wallkpop.vercel.app/') =>
     <script src="https://rawcdn.githack.com/caraaink/otakudesu/1ff200e0bc05d43443b4944b46532c4b4c3cc275/plyr.polyfilled.js"></script>
     <link href="https://stackpath.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet" integrity="sha384-wvfXpqpZZVQGK6TAh5PVlGOfQNHSoD2xbE+QkPxCAFlNEevoEH3Sl0sibVcOQVnN" crossorigin="anonymous">
     <link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" type="text/css" href="https://raw.githubusercontent.com/caraaink/wallkpop/main/public/style.css"/>
+    <link rel="stylesheet" type="text/css" href="https://rawcdn.githack.com/caraaink/wallkpop/e24482dd4db4eb4b4645ed2538a36b33257e4d82/public/style.css"/>
     <meta name="google-site-verification" content="9e9RaAsVDPAkag708Q30S8xSw8_qIMm87FJBoJWzink" />
     <meta name="yandex-verification" content="b507670596647101" />
   `;
@@ -466,55 +466,6 @@ app.get('/track/:id/:permalink', (req, res) => {
         <html>
         <head>
           ${getMetaHeader(post, `https://wallkpop.vercel.app/track/${id}/${req.params.permalink}`)}
-          <style>
-            body { font-family: 'Lora', Arial, sans-serif; margin: 0; padding: 0; }
-            header { text-align: center; padding: 20px; background: #f4f4f4; }
-            header h1 a { color: #333; text-decoration: none; }
-            header h2 { color: #666; font-size: 1.2rem; }
-            nav ul { list-style: none; padding: 0; display: flex; justify-content: center; gap: 20px; }
-            nav ul li a { color: #007bff; text-decoration: none; }
-            #search { margin: 20px auto; max-width: 600px; }
-            #search form { display: flex; gap: 10px; }
-            .inp-text { padding: 8px; width: 80%; border: 1px solid #ddd; border-radius: 4px; }
-            .inp-btn { padding: 8px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
-            .inp-btn:hover { background: #0056b3; }
-            footer { text-align: center; padding: 20px; background: #f4f4f4; margin-top: 20px; }
-            .footer .center { margin: 10px 0; }
-            .kiri, .kanan { display: inline-block; margin: 0 10px; }
-            .lyrics { color: white; font-size: 24px; font-weight: bold; text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7); text-align: center; width: 93%; opacity: 0; transition: opacity 0.5s ease-in-out; z-index: 10; }
-            @media (max-width: 767px) {
-              .lyrics { position: absolute; top: 69%; left: 50%; transform: translate(-50%, -50%); }
-            }
-            @media (min-width: 768px) {
-              .lyrics { position: absolute; top: 82%; left: 50%; transform: translate(-50%, -50%); font-size: 36px; overflow-y: auto; width: 36%; padding: 10px; box-sizing: border-box; }
-            }
-            .lyrics.active { opacity: 1; }
-            audio { margin-top: 20px; width: 100%; max-width: 600px; }
-            .debug { position: fixed; bottom: 30px; left: 10px; background: rgba(0, 0, 0, 0.7); color: white; padding: 10px; font-size: 14px; max-width: 560px; }
-            .btn-download { background: #f4f4f4; color: #666; text-align: center; border: 1px solid #ddd; display: inline-block; border-radius: 3px; min-width: 78px; position: relative; padding: 5px 4px; margin: 2px 1px; font-size: 12px; }
-            .download-buttons { display: flex; gap: 10px; flex-wrap: wrap; }
-            .downd { position: relative; padding: 18px 12px 12px 12px; font-size: 14px; border: none; border-radius: 6px; color: white; cursor: pointer; height: 63px; max-width: 135px; overflow: hidden; display: flex; flex-direction: column; align-items: center; text-align: center; transition: transform 0.2s; }
-            .downd:hover { transform: scale(1.05); }
-            .bitrate-320 { background: linear-gradient(135deg, #008000, #3ec752); }
-            .bitrate-192 { background: linear-gradient(135deg, #FFA500, #e0d831); }
-            .bitrate-128 { background: linear-gradient(135deg, #ff3333, #f2532c); }
-            .bitrate { position: absolute; top: 6px; right: 6px; font-size: 10px; background: rgba(0, 0, 0, 0.25); padding: 2px 5px; border-radius: 3px; pointer-events: none; }
-            .hq-label, .medium-label, .low-label { position: absolute; top: 6px; left: 6px; background: rgba(255, 255, 255, 0.7); font-size: 9px; font-weight: bold; padding: 1px 4px; border-radius: 2px; pointer-events: none; }
-            .hq-label { color: green; }
-            .medium-label { color: orange; }
-            .low-label { color: red; }
-            .downd .title { font-weight: normal; margin-bottom: 2px; margin-top: 6px; }
-            .downd .size { font-size: 15px; opacity: 0.9; margin-top: -1px; }
-            .post-title { text-align: center; }
-            .autor { margin: 10px 0; }
-            .cover-foto { position: relative; }
-            .post-body table { width: 100%; max-width: 600px; margin: 20px auto; border-collapse: collapse; }
-            .post-body td { padding: 5px; }
-            .container { text-align: center; }
-            .list .lagu { margin: 10px 0; }
-            .list .lagu a { color: #007bff; text-decoration: none; }
-            .note { margin: 20px auto; max-width: 600px; }
-          </style>
         </head>
         <body>
           ${getHeader()}
@@ -577,27 +528,7 @@ app.get('/search/:query', (req, res) => {
       <html>
       <head>
         ${getMetaHeader(null, `https://wallkpop.vercel.app/search/${req.params.query}`)}
-        <style>
-          body { font-family: 'Lora', Arial, sans-serif; margin: 0; padding: 0; }
-          header { text-align: center; padding: 20px; background: #f4f4f4; }
-          header h1 a { color: #333; text-decoration: none; }
-          header h2 { color: #666; font-size: 1.2rem; }
-          nav ul { list-style: none; padding: 0; display: flex; justify-content: center; gap: 20px; }
-          nav ul li a { color: #007bff; text-decoration: none; }
-          #search { margin: 20px auto; max-width: 600px; }
-          #search form { display: flex; gap: 10px; }
-          .inp-text { padding: 8px; width: 80%; border: 1px solid #ddd; border-radius: 4px; }
-          .inp-btn { padding: 8px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
-          .inp-btn:hover { background: #0056b3; }
-          footer { text-align: center; padding: 20px; background: #f4f4f4; margin-top: 20px; }
-          .footer .center { margin: 10px 0; }
-          .kiri, .kanan { display: inline-block; margin: 0 10px; }
-          .album-list table { width: 100%; border-collapse: collapse; }
-          .album-list td { padding: 5px; vertical-align: top; }
-          .paging { text-align: center; margin: 20px 0; }
-          .paging a { margin: 0 5px; text-decoration: none; color: #007bff; }
-          .paging span { margin: 0 5px; }
-        </style>
+        
       </head>
       <body>
         ${getHeader(req.params.query)}
