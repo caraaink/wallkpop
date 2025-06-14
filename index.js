@@ -10,10 +10,10 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static('public'));
 
-// Initialize SQLite database
-const db = new sqlite3.Database(':memory:', (err) => {
+// Initialize SQLite database with file persistence
+const db = new sqlite3.Database(path.join(__dirname, 'posts.db'), (err) => {
   if (err) console.error('Database error:', err);
-  db.run(`CREATE TABLE posts (
+  db.run(`CREATE TABLE IF NOT EXISTS posts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     artist TEXT,
     title TEXT,
@@ -59,7 +59,6 @@ const generatePermalink = (artist, title) => {
   return slugify(`${artist}-${title}`, { lower: true, strict: true, remove: /[*+~.()'"!:@]/g });
 };
 
-// Read file content
 const readFile = async (filePath) => {
   try {
     return await fs.readFile(path.join(__dirname, 'public', filePath), 'utf-8');
@@ -75,6 +74,7 @@ app.get('/', async (req, res) => {
   const header = await readFile('header');
   const footer = await readFile('footer');
   const style = await readFile('style.css');
+  const content = await readFile('index.html');
   const html = `
     <!DOCTYPE html>
     <html>
@@ -84,10 +84,31 @@ app.get('/', async (req, res) => {
     </head>
     <body>
       ${header}
-      <div id="content">
-        <h1>Welcome to Wallkpop</h1>
-        <p>Download the latest K-Pop music and soundtracks. Use the search or browse our collection!</p>
-      </div>
+      ${content}
+      ${footer}
+    </body>
+    </html>
+  `;
+  res.send(html);
+});
+
+// Index.html specific route
+app.get('/index.html', async (req, res) => {
+  const metaheader = await readFile('metaheader');
+  const header = await readFile('header').then(headerContent => headerContent.replace('<ul>', '<ul><li><a href="/">Home</a></li><li><a href="/search/ost">OST</a></li><li><a href="https://meownime.wapkizs.com/">Anime</a></li>'));
+  const footer = await readFile('footer');
+  const style = await readFile('style.css');
+  const content = await readFile('index.html');
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      ${metaheader}
+      <style>${style}</style>
+    </head>
+    <body>
+      ${header}
+      ${content}
       ${footer}
     </body>
     </html>
@@ -155,14 +176,17 @@ app.post('/panel', (req, res) => {
       lyricstimestamp, lyrics, name
     ],
     function(err) {
-      if (err) return res.status(500).send('Error saving post');
+      if (err) {
+        console.error('POST error:', err);
+        return res.status(500).send('Error saving post');
+      }
       const permalink = generatePermalink(artist, title);
       res.redirect(`/track/${this.lastID}/${permalink}`);
     }
   );
 });
 
-// Track, Search, and API routes (simplified, assume existing logic)
+// Track, Search, and API routes (simplified placeholders)
 app.get('/track/:id/:permalink', (req, res) => res.send('Track page (implement as needed)'));
 app.get('/search/:query', (req, res) => res.send('Search page (implement as needed)'));
 app.post('/api/post', (req, res) => res.send('API post (implement as needed)'));
