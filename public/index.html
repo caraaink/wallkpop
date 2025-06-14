@@ -1,10 +1,86 @@
+<h3 style="font-size: 16px; margin: 0 0 8px 0; background: #d04e38; color: #ffffff; display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; border-radius: 4px;">
+  <span>Featured Track</span>
+  <span style="background: #ffffff; color: #ba412c; font-size: 12px; padding: 2px 6px; border-radius: 3px; display: inline-block;">last week</span>
+</h3>
+<div class="carousel-container">
+  <div class="carousel">
+    [blog]bid=kpop,o=h,t=week,l=30,v=on,s=:url-2(:to-page(1):):,no=<center>Page Limit</center>||
+    <a href="/site-track.html?to-file=%id%">
+      <div class="card">
+        <div class="image-container">
+          <img src="[replace=(%var-thumb%)] ||+[/replace]" alt="%var-title% by %var-artist%" title="%var-title% by %var-artist%">
+          <span class="views"><i class="fa fa-eye" aria-hidden="true"></i> %hits%</span>
+        </div>
+        <div class="card-content">
+          <h3 style="font-size: 10px; margin: 0 0 8px 0; background: #1a594f; color: #ffffff; display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; border-radius: 4px;">%var-artist% - %var-title%</h3>
+          <p>Album: %var-album%</p>
+          <div class="info-row">
+            <span class="duration"><i class="fa fa-clock-o" aria-hidden="true"></i> %var-duration%</span>
+            <span class="genre">[replace=(%var-genre%)]%var-genre%||<i class="fa fa-file-audio-o" aria-hidden="true"></i> %var-genre%[/replace]</span>
+            <span class="lyrics">[replace=(%var-available%)]on[]off||<i class="fa fa-sticky-note-o" aria-hidden="true"></i> + Lyrics [][/replace]</span>
+          </div>
+        </div>
+      </div>
+    </a>
+    [/blog]
+  </div>
+</div>
+
+<h3 style="font-size: 16px; margin: 0 0 8px 0; background: #ba412c; color: #ffffff; display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; border-radius: 4px;">
+  <span>TOP 5 Daily Chart</span>
+  <span style="background: #ffffff; color: #ba412c; font-size: 12px; padding: 2px 6px; border-radius: 3px; display: inline-block;">::date=H:i:: UTC</span>
+</h3>
+[blog]bid=kpop,o=h,t=month,l=5,v=on,s=:url-2(:to-page(1):):,no=<center style="color: #666; font-size: 12px; margin-bottom: 8px;">Page Limit</center>||
+<div class="menu" style="margin-bottom: 8px; background: rgba(0,0,0,0.05); padding: 6px; border-radius: 6px; display: flex; align-items: center; transition: background 0.2s;">
+  <div style="flex: 0 0 25px; text-align: center; font-size: 14px; color: #1e90ff; font-weight: bold;">
+    <span>%sn%</span>
+  </div>
+  <div style="flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 8px;">
+    <a href="/site-track.html?to-file=%id%" title="%var-artist% - %var-title%.mp3" rel="dofollow" style="color: #333; text-decoration: none; font-size: 12px;"> %var-artist% - %var-title% </a>
+  </div>
+  <div style="flex: 0 0 40px;">
+    <img src="%var-thumb%" width="40px" height="40px" alt="%var-artist% - %var-title%" style="border-radius: 4px; object-fit: cover;"/>
+  </div>
+</div>
+[/blog]
+
+<h3 style="font-size: 16px; margin: 0 0 8px 0; background: #ba412c; color: #ffffff; display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; border-radius: 4px;">
+  <span>New Update</span>
+  <span style="background: #ffffff; color: #ba412c; font-size: 12px; padding: 2px 6px; border-radius: 3px; display: inline-block;"><i class="fa fa-calendar" aria-hidden="true"></i> ::date::</span>
+</h3>
 <div id="content">
-  <h1>Welcome to Wallkpop</h1>
-  <p>Explore the latest K-Pop hits and soundtracks:</p>
-  <ul>
-    <li><a href="/search/kpop">Latest K-Pop Songs</a></li>
-    <li><a href="/search/ost">K-Drama OSTs</a></li>
-    <li><a href="https://meownime.wapkizs.com/">Anime Music</a></li>
-  </ul>
-  <p>Download for free, support artists by purchasing originals!</p>
+  <div class="album">
+    [blog]bid=kpop,o=u,l=40,s=:url-2(:to-page(1):):,v=on,no=<center>Page Limit</center>||
+    <div class="album-list">
+      <table>
+        <tbody>
+          <tr valign="top">
+            <td class="kpops-list-thumb" align="center">
+              <div style="position: relative; display: inline-block; width: 60px; height: 55px;">
+                <img class="thumb" src="[replace=(%var-thumb%)] ||+[/replace]" alt="%var-artist% - %var-title%.mp3" width="60px" height="55px" style="display: block;">
+                <span style="position: absolute; bottom: -4px; right: -4px; font-size: 8px; color: #ffffff; background: rgba(0, 0, 0, 0.4); padding: 1px 3px; border-radius: 1px; line-height: 1.2; max-width: 89%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                  <i class="fa fa-eye" aria-hidden="true"></i> %hits%
+                </span>
+              </div>
+            </td>
+            <td align="left">
+              <span>
+                <a title="Download %title% mp3" href="/site-track.html?to-file=%id%"><b>%var-artist% - %var-title%</b></a>
+                <br>
+                <font style="font-size:12px;line-height:2;"><i class="fa fa-audio-description" aria-hidden="true"></i> %var-album%</font>
+                <br>
+                <font style="font-size:11px;line-height:1.5;">
+                  <i class="fa fa-hdd-o" aria-hidden="true"></i> %var-size% MB - <i class="fa fa-clock-o" aria-hidden="true"></i> %var-duration% - <i class="fa fa-calendar" aria-hidden="true"></i> %text%
+                  [replace=(%var-genre%)]%var-genre%|| - <i class="fa fa-file-audio-o" aria-hidden="true"></i> %var-genre%[/replace]
+                  [replace=(%var-available%)]on[]off||- <i class="fa fa-sticky-note-o" aria-hidden="true"></i> + Lyrics [][/replace]
+                </font>
+              </span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    [/blog]
+    <div class="paging">:page:c=[blog]l=0||%count%[/blog],u=/site-allmusic.html?to-page=,l=10,s=:to-page:,no=::<span>:to-page(1): of %nlast%</span> %prev=Prev% %n% %next=Next% :/page:</div>
+  </div>
 </div>
