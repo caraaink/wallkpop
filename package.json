@@ -1,13 +1,14 @@
 {
-  "name": "wallkpop",
+  "name": "mp3-blog",
   "version": "1.0.0",
+  "main": "index.js",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start"
+    "start": "node index.js"
   },
   "dependencies": {
-    "next": "^14.2.3",
-    "@vercel/postgres": "^0.8.0"
+    "express": "^4.18.2",
+    "sqlite3": "^5.1.6",
+    "body-parser": "^1.20.2",
+    "slugify": "^1.6.6"
   }
 }
