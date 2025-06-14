@@ -232,6 +232,7 @@ const parseBlogTags = (template, posts, options = {}) => {
   let result = '';
   posts.slice(0, limit).forEach((post, index) => {
     let item = template;
+    const permalink = generatePermalink(post.artist, post.title); // Generate permalink with actual values
     item = item.replace(/%id%/g, post.id)
       .replace(/%var-artist%/g, post.artist)
       .replace(/%var-title%/g, post.title)
@@ -260,8 +261,8 @@ const parseBlogTags = (template, posts, options = {}) => {
       .replace(/%sn%/g, index + 1)
       .replace(/%date=Y-m-d%/g, getFormattedDate('Y-m-d'))
       .replace(/%text%/g, post.year || 'Unknown')
-      .replace(/:url-1\(:to-file:\):/g, `/track/${post.id}/${generatePermalink(post.artist, post.title)}`)
-      .replace(/:page_url:/g, `https://wallkpop.vercel.app/track/${post.id}/${generatePermalink(post.artist, post.title)}`);
+      .replace(/:url-1\(:to-file:\):/g, `/track/${post.id}/${permalink}`) // Use the generated permalink
+      .replace(/:page_url:/g, `https://wallkpop.vercel.app/track/${post.id}/${permalink}`);
     result += item;
   });
   return result;
