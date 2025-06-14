@@ -9,7 +9,7 @@ const busboy = require('busboy');
 const app = express();
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
-app.use(express.static('public'));
+app.use(express.static('public')); // Serve static files from public directory
 
 // Helper function to generate permalink with fallback
 const generatePermalink = (artist, title) => {
@@ -187,17 +187,30 @@ const parseBlogTags = (template, posts, options = {}) => {
 
 // Fetch all posts from Blob
 async function fetchPosts() {
-  const { blobs } = await Blob.list();
-  const posts = await Promise.all(blobs.map(async (blob) => {
-    const response = await fetch(blob.url);
-    return response.json();
-  }));
-  return posts.filter(post => post && typeof post === 'object'); // Filter out invalid entries
+  try {
+    const { blobs } = await Blob.list();
+    const posts = await Promise.all(blobs.map(async (blob) => {
+      const response = await fetch(blob.url);
+      if (!response.ok) throw new Error(`Failed to fetch ${blob.url}`);
+      return response.json();
+    }));
+    return posts.filter(post => post && typeof post === 'object'); // Filter out invalid entries
+  } catch (err) {
+    console.error('Error fetching posts from Blob:', err);
+    return [];
+  }
 }
 
 // Panel route
 app.get('/panel', (req, res) => {
-  res.sendFile(path.join(__dirname, 'panel.html'));
+  const panelPath = path.join(__dirname, 'panel.html');
+  fs.access(panelPath, fs.constants.F_OK, (err) => {
+    if (err) {
+      console.error('panel.html not found:', err.message);
+      return res.status(404).send('Panel page not found. Please ensure panel.html is in the project root.');
+    }
+    res.sendFile(panelPath);
+  });
 });
 
 // Handle manual post submission from panel
@@ -378,9 +391,10 @@ app.get('/track/:id/:permalink', async (req, res) => {
   const post = posts.find(p => p.id === id);
   if (!post) return res.status(404).send('Post not found');
 
-  db.run('UPDATE posts SET hits = hits + 1 WHERE id = ?', [id], (err) => {
-    if (err) console.error('Error updating hits:', err);
-  });
+  // Note: Hits update is commented out as Blob doesn't support direct updates
+  // db.run('UPDATE posts SET hits = hits + 1 WHERE id = ?', [id], (err) => {
+  //   if (err) console.error('Error updating hits:', err);
+  // });
 
   const related = posts.filter(p => p.artist === post.artist && p.id !== id).slice(0, 20);
   const relatedContent = parseBlogTags(`
