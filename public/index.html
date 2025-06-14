@@ -5,7 +5,7 @@
 <div class="carousel-container">
   <div class="carousel">
     [blog]bid=kpop,o=h,t=week,l=30,v=on,s=:url-2(:to-page(1):):,no=<center>Page Limit</center>||
-    <a href="/site-track.html?to-file=%id%">
+    <a href="/track/%id%/%permalink%">
       <div class="card">
         <div class="image-container">
           <img src="[replace=(%var-thumb%)] ||+[/replace]" alt="%var-title% by %var-artist%" title="%var-title% by %var-artist%">
@@ -36,7 +36,7 @@
     <span>%sn%</span>
   </div>
   <div style="flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 8px;">
-    <a href="/site-track.html?to-file=%id%" title="%var-artist% - %var-title%.mp3" rel="dofollow" style="color: #333; text-decoration: none; font-size: 12px;"> %var-artist% - %var-title% </a>
+    <a href="/track/%id%/%permalink%" title="%var-artist% - %var-title%.mp3" rel="dofollow" style="color: #333; text-decoration: none; font-size: 12px;"> %var-artist% - %var-title% </a>
   </div>
   <div style="flex: 0 0 40px;">
     <img src="%var-thumb%" width="40px" height="40px" alt="%var-artist% - %var-title%" style="border-radius: 4px; object-fit: cover;"/>
@@ -65,7 +65,7 @@
             </td>
             <td align="left">
               <span>
-                <a title="Download %title% mp3" href="/site-track.html?to-file=%id%"><b>%var-artist% - %var-title%</b></a>
+                <a title="Download %var-title% mp3" href="/track/%id%/%permalink%"><b>%var-artist% - %var-title%</b></a>
                 <br>
                 <font style="font-size:12px;line-height:2;"><i class="fa fa-audio-description" aria-hidden="true"></i> %var-album%</font>
                 <br>
