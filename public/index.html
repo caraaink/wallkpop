@@ -1,86 +1,72 @@
-<h3 style="font-size: 16px; margin: 0 0 8px 0; background: #d04e38; color: #ffffff; display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; border-radius: 4px;">
-  <span>Featured Track</span>
-  <span style="background: #ffffff; color: #ba412c; font-size: 12px; padding: 2px 6px; border-radius: 3px; display: inline-block;">last week</span>
-</h3>
-<div class="carousel-container">
-  <div class="carousel">
-    [blog]bid=kpop,o=h,t=week,l=30,v=on,s=:url-2(:to-page(1):):,no=<center>Page Limit</center>||
-    <a href="/track/%id%/%permalink%">
-      <div class="card">
-        <div class="image-container">
-          <img src="[replace=(%var-thumb%)] ||+[/replace]" alt="%var-title% by %var-artist%" title="%var-title% by %var-artist%">
-          <span class="views"><i class="fa fa-eye" aria-hidden="true"></i> %hits%</span>
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wallkpop | Download Latest K-Pop Music MP3</title>
+  <meta name="description" content="We are K-Pop lovers who spread the love for k-music. The site does not store any files on its server. All contents are for promotion only. Please support the artists by purchasing their CDs.">
+  <meta name="keywords" content="KPop, Download KPop, KPop Music, KPop Songs, JPop, Download JPop, JPop Music, JPop Songs, CPop, Download CPop, CPop Music, CPop Songs, Ost KDrama, Lagu Soundtrack KDrama, Lagu Drama Korea, Lagu KPop Terbaru, Tangga Lagu KPop, Download K-Pop Latest Mp3">
+  <meta name="author" content="Wallkpop">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://wallkpop.vercel.app/">
+  <meta property="og:site_name" content="Wallkpop">
+  <link rel="stylesheet" href="https://rawcdn.githack.com/caraaink/otakudesu/1ff200e0bc05d43443b4944b46532c4b4c3cc275/plyr.css" />
+  <script src="https://rawcdn.githack.com/caraaink/otakudesu/1ff200e0bc05d43443b4944b46532c4b4c3cc275/plyr.polyfilled.js"></script>
+  <link href="https://stackpath.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet" integrity="sha384-wvfXpqpZZVQGK6TAh5PVlGOfQNHSoD2xbE+QkPxCAFlNEevoEH3Sl0sibVcOQVnN" crossorigin="anonymous">
+  <link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" type="text/css" href="https://fastcdn.jdi5.com/css/wallkpop.wapkizs.com/style.css"/>
+  <meta name="google-site-verification" content="9e9RaAsVDPAkag708Q30S8xSw8_qIMm87FJBoJWzink" />
+  <meta name="yandex-verification" content="b507670596647101" />
+</head>
+<body>
+  <div>
+    <header>
+      <h1 title="title"><a href="/" title="Download K-Pop Music MP3">Wallkpop</a></h1>
+      <h2 title="description">Download Latest K-Pop Music & Soundtrack K-Drama. in Small Size</h2>
+      <nav>
+        <ul>
+          <li><a href="/">Home</a></li>
+          <li><a href="https://metrolagu.wapkiz.mobi/">K-Pop</a></li>
+          <li><a href="/search/ost">OST</a></li>
+          <li><a href="https://meownime.wapkizs.com/">Anime</a></li>
+        </ul>
+      </nav>
+      <div id="search">
+        <form action="/search" method="get">
+          <input class="inp-text" type="text" maxlength="100" placeholder="Enter Music Keywords..." autocomplete="off" name="to-q">
+          <input class="inp-btn" type="submit" value="Search">
+        </form>
+      </div>
+    </header>
+  </div>
+  <div id="content">
+    <h1>Welcome to Wallkpop</h1>
+    <p>Download the latest K-Pop music and soundtracks. Use the search or browse our collection!</p>
+  </div>
+  <footer>
+    <div class="footer">
+      <div class="menufot">
+        <p>We are <i>K-Pop lovers</i> who spread the love for k-music. The site does not store any files on its server. All contents are for promotion only. Please support the artists by purchasing their CDs.</p>
+      </div>
+      <div class="center">
+        <a href="https://www.facebook.com/wallkpop.official" title="Follow Facebook" style="background:#1877F2;color:#fff;padding:3px 8px;margin:1px;border:1px solid #ddd;font-weight:bold;border-radius:4px;display:inline-block;" target="_blank">Facebook</a>
+        <a href="https://www.instagram.com/wallkpop.official" title="Follow Instagram" style="background:linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888);color:#ffffff;padding:3px 8px;margin:1px;font-weight:bold;border:1px solid #ddd;border-radius:4px;display:inline-block;" target="_blank">Instagram</a>
+        <a href="https://x.com/wallkpop_mp3" title="Follow X" style="background:#000000;color:#ffffff;padding:3px 8px;margin:1px;font-weight:bold;border:1px solid #ddd;border-radius:4px;display:inline-block;" target="_blank">X</a>
+        <a href="whatsapp://send?text=Wallkpop | Download Latest K-Pop Music MP3%0a%20https://wallkpop.vercel.app/" title="Bagikan ke WhatsApp" style="background:#019C00;color:#ffffff;padding:3px 8px;margin:1px;font-weight:bold;border:1px solid #ddd;border-radius:4px;display:inline-block;">WA</a>
+        <a href="https://t.me/wallkpopmp3" title="Join Telegram" style="background:#0088CC;color:#ffffff;padding:3px 8px;margin:1px;font-weight:bold;border:1px solid #ddd;border-radius:4px;display:inline-block;" target="_blank">Telegram</a>
+        <a href="https://www.threads.com/@wallkpop.official" title="Follow Threads" style="background:#000000;color:#ffffff;padding:3px 8px;margin:1px;font-weight:bold;border:1px solid #ddd;border-radius:4px;display:inline-block;" target="_blank">Threads</a>
+        <br><br>
+        <div class="kiri">
+          <a href="#">Disclaimer</a>
         </div>
-        <div class="card-content">
-          <h3 style="font-size: 10px; margin: 0 0 8px 0; background: #1a594f; color: #ffffff; display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; border-radius: 4px;">%var-artist% - %var-title%</h3>
-          <p>Album: %var-album%</p>
-          <div class="info-row">
-            <span class="duration"><i class="fa fa-clock-o" aria-hidden="true"></i> %var-duration%</span>
-            <span class="genre">[replace=(%var-genre%)]%var-genre%||<i class="fa fa-file-audio-o" aria-hidden="true"></i> %var-genre%[/replace]</span>
-            <span class="lyrics">[replace=(%var-available%)]on[]off||<i class="fa fa-sticky-note-o" aria-hidden="true"></i> + Lyrics [][/replace]</span>
-          </div>
+        2019 - 2025 WALLKPOP Network.
+        <div class="kanan">
+          <a href="#" id="gotop" rel="nofollow" name="gotop">TOP</a>
         </div>
       </div>
-    </a>
-    [/blog]
-  </div>
-</div>
-
-<h3 style="font-size: 16px; margin: 0 0 8px 0; background: #ba412c; color: #ffffff; display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; border-radius: 4px;">
-  <span>TOP 5 Daily Chart</span>
-  <span style="background: #ffffff; color: #ba412c; font-size: 12px; padding: 2px 6px; border-radius: 3px; display: inline-block;">::date=H:i:: UTC</span>
-</h3>
-[blog]bid=kpop,o=h,t=month,l=5,v=on,s=:url-2(:to-page(1):):,no=<center style="color: #666; font-size: 12px; margin-bottom: 8px;">Page Limit</center>||
-<div class="menu" style="margin-bottom: 8px; background: rgba(0,0,0,0.05); padding: 6px; border-radius: 6px; display: flex; align-items: center; transition: background 0.2s;">
-  <div style="flex: 0 0 25px; text-align: center; font-size: 14px; color: #1e90ff; font-weight: bold;">
-    <span>%sn%</span>
-  </div>
-  <div style="flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 8px;">
-    <a href="/track/%id%/%permalink%" title="%var-artist% - %var-title%.mp3" rel="dofollow" style="color: #333; text-decoration: none; font-size: 12px;"> %var-artist% - %var-title% </a>
-  </div>
-  <div style="flex: 0 0 40px;">
-    <img src="%var-thumb%" width="40px" height="40px" alt="%var-artist% - %var-title%" style="border-radius: 4px; object-fit: cover;"/>
-  </div>
-</div>
-[/blog]
-
-<h3 style="font-size: 16px; margin: 0 0 8px 0; background: #ba412c; color: #ffffff; display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; border-radius: 4px;">
-  <span>New Update</span>
-  <span style="background: #ffffff; color: #ba412c; font-size: 12px; padding: 2px 6px; border-radius: 3px; display: inline-block;"><i class="fa fa-calendar" aria-hidden="true"></i> ::date::</span>
-</h3>
-<div id="content">
-  <div class="album">
-    [blog]bid=kpop,o=u,l=40,s=:url-2(:to-page(1):):,v=on,no=<center>Page Limit</center>||
-    <div class="album-list">
-      <table>
-        <tbody>
-          <tr valign="top">
-            <td class="kpops-list-thumb" align="center">
-              <div style="position: relative; display: inline-block; width: 60px; height: 55px;">
-                <img class="thumb" src="[replace=(%var-thumb%)] ||+[/replace]" alt="%var-artist% - %var-title%.mp3" width="60px" height="55px" style="display: block;">
-                <span style="position: absolute; bottom: -4px; right: -4px; font-size: 8px; color: #ffffff; background: rgba(0, 0, 0, 0.4); padding: 1px 3px; border-radius: 1px; line-height: 1.2; max-width: 89%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                  <i class="fa fa-eye" aria-hidden="true"></i> %hits%
-                </span>
-              </div>
-            </td>
-            <td align="left">
-              <span>
-                <a title="Download %var-title% mp3" href="/track/%id%/%permalink%"><b>%var-artist% - %var-title%</b></a>
-                <br>
-                <font style="font-size:12px;line-height:2;"><i class="fa fa-audio-description" aria-hidden="true"></i> %var-album%</font>
-                <br>
-                <font style="font-size:11px;line-height:1.5;">
-                  <i class="fa fa-hdd-o" aria-hidden="true"></i> %var-size% MB - <i class="fa fa-clock-o" aria-hidden="true"></i> %var-duration% - <i class="fa fa-calendar" aria-hidden="true"></i> %text%
-                  [replace=(%var-genre%)]%var-genre%|| - <i class="fa fa-file-audio-o" aria-hidden="true"></i> %var-genre%[/replace]
-                  [replace=(%var-available%)]on[]off||- <i class="fa fa-sticky-note-o" aria-hidden="true"></i> + Lyrics [][/replace]
-                </font>
-              </span>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <br>
+      <center><i>Ilkpop - Matikiri - Wallkpop</i></center>
     </div>
-    [/blog]
-    <div class="paging">:page:c=[blog]l=0||%count%[/blog],u=/site-allmusic.html?to-page=,l=10,s=:to-page:,no=::<span>:to-page(1): of %nlast%</span> %prev=Prev% %n% %next=Next% :/page:</div>
-  </div>
-</div>
+  </footer>
+</body>
+</html>
