@@ -9,44 +9,67 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static('public'));
 
-// Initialize SQLite database with indexing for faster queries
-const db = new sqlite3.Database(':memory:', (err) => {
-  if (err) {
-    console.error('Database initialization error:', err);
-    process.exit(1); // Exit if database fails to initialize
-  }
-  db.run(`CREATE TABLE posts (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    artist TEXT,
-    title TEXT,
-    year INTEGER,
-    album TEXT,
-    genre TEXT,
-    duration TEXT,
-    size TEXT,
-    size128 TEXT,
-    size192 TEXT,
-    size320 TEXT,
-    bitrate TEXT,
-    bitrate128 TEXT,
-    bitrate192 TEXT,
-    bitrate320 TEXT,
-    thumb TEXT,
-    link TEXT,
-    link2 TEXT,
-    url128 TEXT,
-    url192 TEXT,
-    url320 TEXT,
-    hits INTEGER DEFAULT 0,
-    lyricstimestamp TEXT,
-    lyrics TEXT,
-    name TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-  )`, (err) => {
-    if (err) console.error('Table creation error:', err);
+// Function to initialize database and create table
+function initializeDatabase() {
+  return new Promise((resolve, reject) => {
+    const db = new sqlite3.Database(':memory:', (err) => {
+      if (err) {
+        console.error('Database initialization error:', err);
+        return reject(err);
+      }
+      db.run(`CREATE TABLE IF NOT EXISTS posts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        artist TEXT,
+        title TEXT,
+        year INTEGER,
+        album TEXT,
+        genre TEXT,
+        duration TEXT,
+        size TEXT,
+        size128 TEXT,
+        size192 TEXT,
+        size320 TEXT,
+        bitrate TEXT,
+        bitrate128 TEXT,
+        bitrate192 TEXT,
+        bitrate320 TEXT,
+        thumb TEXT,
+        link TEXT,
+        link2 TEXT,
+        url128 TEXT,
+        url192 TEXT,
+        url320 TEXT,
+        hits INTEGER DEFAULT 0,
+        lyricstimestamp TEXT,
+        lyrics TEXT,
+        name TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )`, (err) => {
+        if (err) {
+          console.error('Table creation error:', err);
+          return reject(err);
+        }
+        db.run('CREATE INDEX IF NOT EXISTS idx_id ON posts(id)', (err) => {
+          if (err) console.error('Index creation error:', err);
+          resolve(db);
+        });
+      });
+    });
   });
-  db.run('CREATE INDEX idx_id ON posts(id)'); // Index for faster ID lookups
-});
+}
+
+// Global database instance
+let db;
+
+(async () => {
+  try {
+    db = await initializeDatabase();
+    console.log('Database initialized successfully');
+  } catch (err) {
+    console.error('Failed to initialize database, exiting:', err);
+    process.exit(1);
+  }
+})();
 
 // Helper function to generate permalink with fallback
 const generatePermalink = (artist, title) => {
@@ -235,6 +258,14 @@ const parseBlogTags = (template, posts, options = {}) => {
   });
   return result;
 };
+
+// Middleware to ensure database is ready
+app.use((req, res, next) => {
+  if (!db) {
+    return res.status(500).send('Database not initialized');
+  }
+  next();
+});
 
 // Root route
 app.get('/', (req, res) => {
