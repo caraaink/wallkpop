@@ -15,10 +15,9 @@ const dbPath = path.join(__dirname, 'posts.db');
 const db = new sqlite3.Database(dbPath, (err) => {
   if (err) {
     console.error('Database connection error:', err);
-    // Create database if it doesn't exist
     fs.access(dbPath).catch(() => {
       console.log('Database file not found, initializing...');
-      db.run(`CREATE TABLE posts (
+      db.run(`CREATE TABLE IF NOT EXISTS posts (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         artist TEXT,
         title TEXT,
@@ -107,6 +106,7 @@ const parseBlogTags = async (template) => {
     if (posts.length > 0) {
       posts.forEach((post, index) => {
         let item = no || '';
+        const permalink = generatePermalink(post.artist, post.title);
         item = item.replace(/%id%/g, post.id)
                   .replace(/%var-artist%/g, post.artist || '')
                   .replace(/%var-title%/g, post.title || '')
@@ -118,7 +118,8 @@ const parseBlogTags = async (template) => {
                   .replace(/%hits%/g, post.hits || 0)
                   .replace(/%sn%/g, index + 1)
                   .replace(/::date::/g, getFormattedDate('Y-m-d'))
-                  .replace(/::date=H:i::/g, getFormattedDate('H:i') + ' UTC');
+                  .replace(/::date=H:i::/g, getFormattedDate('H:i') + ' UTC')
+                  .replace(/\/site-track\.html\?to-file=%id%/g, `/track/${post.id}/${permalink}`);
         blogContent += item;
       });
     } else {
@@ -129,33 +130,8 @@ const parseBlogTags = async (template) => {
   return result;
 };
 
-// Homepage route
-app.get('/', async (req, res) => {
-  const metaheader = await readFile('metaheader');
-  const header = await readFile('header');
-  const footer = await readFile('footer');
-  const style = await readFile('style.css');
-  let content = await readFile('index.html');
-  content = await parseBlogTags(content);
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      ${metaheader}
-      <style>${style}</style>
-    </head>
-    <body>
-      ${header}
-      ${content}
-      ${footer}
-    </body>
-    </html>
-  `;
-  res.send(html);
-});
-
-// Index.html specific route
-app.get('/index.html', async (req, res) => {
+// Homepage and index.html route
+app.get(['/', '/index.html'], async (req, res) => {
   const metaheader = await readFile('metaheader');
   const header = await readFile('header').then(headerContent => headerContent.replace('<ul>', '<ul><li><a href="/">Home</a></li><li><a href="/search/ost">OST</a></li><li><a href="https://meownime.wapkizs.com/">Anime</a></li>'));
   const footer = await readFile('footer');
@@ -249,9 +225,20 @@ app.post('/panel', (req, res) => {
   );
 });
 
-// Track, Search, and API routes (simplified placeholders)
-app.get('/track/:id/:permalink', (req, res) => res.send('Track page (implement as needed)'));
-app.get('/search/:query', (req, res) => res.send('Search page (implement as needed)'));
-app.post('/api/post', (req, res) => res.send('API post (implement as needed)'));
+// Track route
+app.get('/track/:id/:permalink', async (req, res) => {
+  const { id, permalink } = req.params;
+  const post = await new Promise((resolve, reject) => {
+    db.get('SELECT * FROM posts WHERE id = ?', [id], (err, row) => (err ? reject(err) : resolve(row)));
+  }).catch(err => {
+    console.error('Track query error:', err);
+    return null;
+  });
+  if (post && generatePermalink(post.artist, post.title) === permalink) {
+    res.send(`Track: ${post.artist} - ${post.title}`);
+  } else {
+    res.status(404).send('Track not found');
+  }
+});
 
 module.exports = app;
