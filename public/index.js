@@ -11,7 +11,10 @@ app.use(express.static('public'));
 
 // Initialize SQLite database with indexing for faster queries
 const db = new sqlite3.Database(':memory:', (err) => {
-  if (err) console.error('Database error:', err);
+  if (err) {
+    console.error('Database initialization error:', err);
+    process.exit(1); // Exit if database fails to initialize
+  }
   db.run(`CREATE TABLE posts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     artist TEXT,
@@ -39,7 +42,9 @@ const db = new sqlite3.Database(':memory:', (err) => {
     lyrics TEXT,
     name TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-  )`);
+  )`, (err) => {
+    if (err) console.error('Table creation error:', err);
+  });
   db.run('CREATE INDEX idx_id ON posts(id)'); // Index for faster ID lookups
 });
 
@@ -129,7 +134,7 @@ const getMetaHeader = (post = null, pageUrl = 'https://wallkpop.vercel.app/') =>
     <script src="https://rawcdn.githack.com/caraaink/otakudesu/1ff200e0bc05d43443b4944b46532c4b4c3cc275/plyr.polyfilled.js"></script>
     <link href="https://stackpath.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet" integrity="sha384-wvfXpqpZZVQGK6TAh5PVlGOfQNHSoD2xbE+QkPxCAFlNEevoEH3Sl0sibVcOQVnN" crossorigin="anonymous">
     <link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" type="text/css" href="https://fastcdn.jdi5.com/css/wallkpop.wapkizs.com/style.css"/>
+    <link rel="stylesheet" type="text/css" href="https://fastcdn.jdi5.com/css/wallkpop.wapkiz.com/style.css"/>
     <meta name="google-site-verification" content="9e9RaAsVDPAkag708Q30S8xSw8_qIMm87FJBoJWzink" />
     <meta name="yandex-verification" content="b507670596647101" />
   `;
@@ -285,6 +290,16 @@ app.post('/panel', (req, res) => {
     'var-name': name
   } = req.body;
 
+  // Validate required fields
+  if (!artist || !title || !year) {
+    return res.status(400).send('Missing required fields: artist, title, or year');
+  }
+  // Convert year to integer
+  const yearNum = parseInt(year, 10);
+  if (isNaN(yearNum)) {
+    return res.status(400).send('Invalid year value');
+  }
+
   db.run(
     `INSERT INTO posts (
       artist, title, year, album, genre, duration, size, size128, size192, size320,
@@ -292,12 +307,15 @@ app.post('/panel', (req, res) => {
       lyricstimestamp, lyrics, name
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
-      artist, title, year, album, genre, duration, size, size128, size192, size320,
+      artist, title, yearNum, album, genre, duration, size, size128, size192, size320,
       bitrate, bitrate128, bitrate192, bitrate320, thumb, link, link2, url128, url192, url320,
       lyricstimestamp, lyrics, name
     ],
     function(err) {
-      if (err) return res.status(500).send('Error saving post');
+      if (err) {
+        console.error('Database error during post insertion:', err.message);
+        return res.status(500).send(`Error saving post: ${err.message}`);
+      }
       const permalink = generatePermalink(artist, title);
       res.redirect(`/track/${this.lastID}/${permalink}`);
     }
@@ -313,11 +331,9 @@ app.get('/track/:id/:permalink', (req, res) => {
       return res.status(500).send('Error fetching post');
     }
     if (!post) return res.status(404).send('Post not found');
-    // Increment hits
     db.run('UPDATE posts SET hits = hits + 1 WHERE id = ?', [id], (err) => {
       if (err) console.error('Error updating hits:', err);
     });
-    // Fetch related songs (same artist, excluding current post)
     db.all('SELECT id, artist, title FROM posts WHERE artist = ? AND id != ? LIMIT 20', [post.artist, id], { timeout: 5000 }, (err, related) => {
       if (err) {
         console.error('Related posts error:', err);
@@ -578,7 +594,17 @@ app.post('/api/post', (req, res) => {
     bitrate, bitrate128, bitrate192, bitrate320, thumb, link, link2, url128, url192, url320,
     lyricstimestamp, lyrics, name
   } = req.body;
-  if (!artist || !title || !year) return res.status(400).json({ error: 'Missing required fields' });
+
+  // Validate required fields
+  if (!artist || !title || !year) {
+    return res.status(400).json({ error: 'Missing required fields: artist, title, or year' });
+  }
+  // Convert year to integer
+  const yearNum = parseInt(year, 10);
+  if (isNaN(yearNum)) {
+    return res.status(400).json({ error: 'Invalid year value' });
+  }
+
   db.run(
     `INSERT INTO posts (
       artist, title, year, album, genre, duration, size, size128, size192, size320,
@@ -586,12 +612,15 @@ app.post('/api/post', (req, res) => {
       lyricstimestamp, lyrics, name
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
-      artist, title, year, album, genre, duration, size, size128, size192, size320,
+      artist, title, yearNum, album, genre, duration, size, size128, size192, size320,
       bitrate, bitrate128, bitrate192, bitrate320, thumb, link, link2, url128, url192, url320,
       lyricstimestamp, lyrics, name
     ],
     function(err) {
-      if (err) return res.status(500).json({ error: 'Error saving post' });
+      if (err) {
+        console.error('Database error during API post insertion:', err.message);
+        return res.status(500).json({ error: `Error saving post: ${err.message}` });
+      }
       const permalink = generatePermalink(artist, title);
       res.json({ id: this.lastID, permalink: `/track/${this.lastID}/${permalink}` });
     }
