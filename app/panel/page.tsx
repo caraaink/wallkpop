@@ -1,3 +1,4 @@
+```tsx
 'use client';
 
 import { useState } from 'react';
@@ -5,42 +6,21 @@ import { useRouter } from 'next/navigation';
 
 export default function Panel() {
   const [formData, setFormData] = useState({
-    coverurl: '',
-    name: '',
-    artist: '',
-    title: '',
-    album: '',
-    genre: '',
-    year: '',
-    category: '',
-    bitrate: '',
-    bitrate320: '',
-    bitrate192: '',
-    bitrate128: '',
-    size: '',
-    size320: '',
-    size192: '',
-    size128: '',
-    link: '',
-    url: '',
-    url320: '',
-    url192: '',
-    url128: '',
-    duration: '',
-    lyrics: '',
-    lyricstimestamp: '',
+    coverurl: '', name: '', artist: '', title: '', album: '', genre: '', year: '', category: '',
+    bitrate: '', bitrate320: '', bitrate192: '', bitrate128: '', size: '', size320: '', size192: '', size128: '',
+    link: '', url: '', url320: '', url192: '', url128: '', duration: '', lyrics: '', lyricstimestamp: ''
   });
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const response = await fetch('/api/post', {
+    const response = await fetch('/api', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(formData),
+      body: JSON.stringify({ action: 'post', ...formData }),
     });
     if (response.ok) {
-      alert('Song posted successfully!');
+      alert('Song posted!');
       router.push('/');
     } else {
       alert('Failed to post song.');
@@ -52,8 +32,8 @@ export default function Panel() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 p-4">
-      <h1 className="text-2xl font-bold mb-4">Admin Panel - Add New Song</h1>
+    <div className="min-h-screen p-4">
+      <h1 className="text-2xl font-bold mb-4">Add New Song</h1>
       <form onSubmit={handleSubmit} className="space-y-4 max-w-lg mx-auto">
         <input type="text" name="coverurl" placeholder="Cover URL" value={formData.coverurl} onChange={handleChange} className="w-full p-2 border rounded" />
         <input type="text" name="name" placeholder="Name" value={formData.name} onChange={handleChange} className="w-full p-2 border rounded" />
@@ -71,7 +51,7 @@ export default function Panel() {
         <input type="text" name="size320" placeholder="Size 320" value={formData.size320} onChange={handleChange} className="w-full p-2 border rounded" />
         <input type="text" name="size192" placeholder="Size 192" value={formData.size192} onChange={handleChange} className="w-full p-2 border rounded" />
         <input type="text" name="size128" placeholder="Size 128" value={formData.size128} onChange={handleChange} className="w-full p-2 border rounded" />
-        <input type="text" name="link" placeholder="Link" value={formData.link} on assumed_change={handleChange} className="w-full p-2 border rounded" />
+        <input type="text" name="link" placeholder="Link" value={formData.link} onChange={handleChange} className="w-full p-2 border rounded" />
         <input type="text" name="url" placeholder="URL" value={formData.url} onChange={handleChange} className="w-full p-2 border rounded" />
         <input type="text" name="url320" placeholder="URL 320" value={formData.url320} onChange={handleChange} className="w-full p-2 border rounded" />
         <input type="text" name="url192" placeholder="URL 192" value={formData.url192} onChange={handleChange} className="w-full p-2 border rounded" />
@@ -84,3 +64,4 @@ export default function Panel() {
     </div>
   );
 }
+```
