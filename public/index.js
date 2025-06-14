@@ -157,7 +157,7 @@ const getMetaHeader = (post = null, pageUrl = 'https://wallkpop.vercel.app/') =>
     <script src="https://rawcdn.githack.com/caraaink/otakudesu/1ff200e0bc05d43443b4944b46532c4b4c3cc275/plyr.polyfilled.js"></script>
     <link href="https://stackpath.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet" integrity="sha384-wvfXpqpZZVQGK6TAh5PVlGOfQNHSoD2xbE+QkPxCAFlNEevoEH3Sl0sibVcOQVnN" crossorigin="anonymous">
     <link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" type="text/css" href="https://fastcdn.jdi5.com/css/wallkpop.wapkiz.com/style.css"/>
+    <link rel="stylesheet" type="text/css" href="https://raw.githubusercontent.com/caraaink/wallkpop/main/public/style.css"/>
     <meta name="google-site-verification" content="9e9RaAsVDPAkag708Q30S8xSw8_qIMm87FJBoJWzink" />
     <meta name="yandex-verification" content="b507670596647101" />
   `;
