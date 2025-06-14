@@ -11,36 +11,43 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static('public'));
 
 // Initialize SQLite database with file persistence
-const db = new sqlite3.Database(path.join(__dirname, 'posts.db'), (err) => {
-  if (err) console.error('Database error:', err);
-  db.run(`CREATE TABLE IF NOT EXISTS posts (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    artist TEXT,
-    title TEXT,
-    year INTEGER,
-    album TEXT,
-    genre TEXT,
-    duration TEXT,
-    size TEXT,
-    size128 TEXT,
-    size192 TEXT,
-    size320 TEXT,
-    bitrate TEXT,
-    bitrate128 TEXT,
-    bitrate192 TEXT,
-    bitrate320 TEXT,
-    thumb TEXT,
-    link TEXT,
-    link2 TEXT,
-    url128 TEXT,
-    url192 TEXT,
-    url320 TEXT,
-    hits INTEGER DEFAULT 0,
-    lyricstimestamp TEXT,
-    lyrics TEXT,
-    name TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-  )`);
+const dbPath = path.join(__dirname, 'posts.db');
+const db = new sqlite3.Database(dbPath, (err) => {
+  if (err) {
+    console.error('Database connection error:', err);
+    // Create database if it doesn't exist
+    fs.access(dbPath).catch(() => {
+      console.log('Database file not found, initializing...');
+      db.run(`CREATE TABLE posts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        artist TEXT,
+        title TEXT,
+        year INTEGER,
+        album TEXT,
+        genre TEXT,
+        duration TEXT,
+        size TEXT,
+        size128 TEXT,
+        size192 TEXT,
+        size320 TEXT,
+        bitrate TEXT,
+        bitrate128 TEXT,
+        bitrate192 TEXT,
+        bitrate320 TEXT,
+        thumb TEXT,
+        link TEXT,
+        link2 TEXT,
+        url128 TEXT,
+        url192 TEXT,
+        url320 TEXT,
+        hits INTEGER DEFAULT 0,
+        lyricstimestamp TEXT,
+        lyrics TEXT,
+        name TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )`);
+    });
+  }
 });
 
 // Helper functions
@@ -68,13 +75,68 @@ const readFile = async (filePath) => {
   }
 };
 
+const parseBlogTags = async (template) => {
+  const regex = /\[blog\](.*?)\[\/blog\]/g;
+  let match;
+  let result = template;
+
+  while ((match = regex.exec(template)) !== null) {
+    const content = match[1];
+    const params = content.split(',').reduce((acc, param) => {
+      const [key, value] = param.split('=');
+      acc[key] = value || true;
+      return acc;
+    }, {});
+    const { bid, o, t, l, v, s, no } = params;
+
+    let query = 'SELECT * FROM posts';
+    const conditions = [];
+    if (bid) conditions.push(`genre LIKE '%${bid}%'`);
+    if (o) conditions.push(`ORDER BY ${o === 'h' ? 'hits' : o === 'u' ? 'created_at' : 'id'} ${t === 'week' || t === 'month' ? 'DESC' : ''}`);
+    if (l) conditions.push(`LIMIT ${l}`);
+    if (conditions.length) query += ' WHERE ' + conditions.join(' AND ');
+
+    const posts = await new Promise((resolve, reject) => {
+      db.all(query, [], (err, rows) => (err ? reject(err) : resolve(rows)));
+    }).catch(err => {
+      console.error('Database query error:', err);
+      return [];
+    });
+
+    let blogContent = '';
+    if (posts.length > 0) {
+      posts.forEach((post, index) => {
+        let item = no || '';
+        item = item.replace(/%id%/g, post.id)
+                  .replace(/%var-artist%/g, post.artist || '')
+                  .replace(/%var-title%/g, post.title || '')
+                  .replace(/%var-album%/g, post.album || '')
+                  .replace(/%var-genre%/g, post.genre || '')
+                  .replace(/%var-duration%/g, post.duration || '')
+                  .replace(/%var-size%/g, post.size || '')
+                  .replace(/%var-thumb%/g, post.thumb || 'https://via.placeholder.com/60')
+                  .replace(/%hits%/g, post.hits || 0)
+                  .replace(/%sn%/g, index + 1)
+                  .replace(/::date::/g, getFormattedDate('Y-m-d'))
+                  .replace(/::date=H:i::/g, getFormattedDate('H:i') + ' UTC');
+        blogContent += item;
+      });
+    } else {
+      blogContent = no || '<center>No posts available</center>';
+    }
+    result = result.replace(match[0], blogContent);
+  }
+  return result;
+};
+
 // Homepage route
 app.get('/', async (req, res) => {
   const metaheader = await readFile('metaheader');
   const header = await readFile('header');
   const footer = await readFile('footer');
   const style = await readFile('style.css');
-  const content = await readFile('index.html');
+  let content = await readFile('index.html');
+  content = await parseBlogTags(content);
   const html = `
     <!DOCTYPE html>
     <html>
@@ -98,7 +160,8 @@ app.get('/index.html', async (req, res) => {
   const header = await readFile('header').then(headerContent => headerContent.replace('<ul>', '<ul><li><a href="/">Home</a></li><li><a href="/search/ost">OST</a></li><li><a href="https://meownime.wapkizs.com/">Anime</a></li>'));
   const footer = await readFile('footer');
   const style = await readFile('style.css');
-  const content = await readFile('index.html');
+  let content = await readFile('index.html');
+  content = await parseBlogTags(content);
   const html = `
     <!DOCTYPE html>
     <html>
@@ -178,7 +241,7 @@ app.post('/panel', (req, res) => {
     function(err) {
       if (err) {
         console.error('POST error:', err);
-        return res.status(500).send('Error saving post');
+        return res.status(500).send(`Error saving post: ${err.message}`);
       }
       const permalink = generatePermalink(artist, title);
       res.redirect(`/track/${this.lastID}/${permalink}`);
