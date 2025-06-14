@@ -3,6 +3,7 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const bodyParser = require('body-parser');
 const slugify = require('slugify');
+const fs = require('fs');
 
 const app = express();
 app.use(bodyParser.json());
@@ -12,7 +13,14 @@ app.use(express.static('public'));
 // Function to initialize database and create table
 function initializeDatabase() {
   return new Promise((resolve, reject) => {
-    const db = new sqlite3.Database(path.join(__dirname, 'public', 'posts.db'), (err) => {
+    const dbPath = path.join('/tmp', 'posts.db');
+    // Ensure directory exists
+    const dir = path.dirname(dbPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    // Create or open database
+    const db = new sqlite3.Database(dbPath, (err) => {
       if (err) {
         console.error('Database initialization error:', err);
         return reject(err);
