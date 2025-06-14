@@ -1,144 +1,114 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>WallKpop Admin Panel</title>
+  <title>Post Panel</title>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
-    body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
-    .section { margin-bottom: 20px; }
+    body { font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; }
     .form-group { margin-bottom: 15px; }
     label { display: block; margin-bottom: 5px; }
-    input[type="text"], textarea { width: 100%; padding: 8px; font-size: 16px; }
-    textarea { height: 100px; resize: vertical; }
-    input[type="submit"], button { padding: 10px 20px; background: #007bff; color: white; border: none; cursor: pointer; margin-right: 10px; }
-    input[type="submit"]:hover, button:hover { background: #0056b3; }
-    details { margin-bottom: 10px; }
-    summary { cursor: pointer; font-weight: bold; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-    th { background: #f2f2f2; }
-    a { color: #007bff; text-decoration: none; }
-    a:hover { text-decoration: underline; }
+    input[type="text"], textarea { width: 100%; padding: 8px; font-size: 16px; border: 1px solid #ddd; border-radius: 4px; }
+    input[type="submit"] { padding: 10px 20px; background: #007bff; color: white; border: none; cursor: pointer; border-radius: 4px; }
+    input[type="submit"]:hover { background: #0056b3; }
   </style>
-  <script>
-    async function fetchConfigAndPosts() {
-      const response = await fetch('/api/config');
-      const { config, posts } = await response.json();
-      document.getElementById('meta').value = config.meta || '';
-      document.getElementById('header').value = config.header || '';
-      document.getElementById('index').value = config.index || '';
-      document.getElementById('footer').value = config.footer || '';
-      document.getElementById('css').value = config.css || '';
-      document.getElementById('sitemap').value = config.sitemap || '';
-      document.getElementById('robots').value = config.robots || '';
-      const tbody = document.getElementById('posts-table').querySelector('tbody');
-      tbody.innerHTML = posts.map(p => `
-        <tr>
-          <td>${p.id}</td>
-          <td>${p.artist}</td>
-          <td>${p.title}</td>
-          <td>${p.year}</td>
-          <td>
-            <button onclick="editPost(${p.id}, '${p.artist}', '${p.title}', '${p.year}')">Edit</button>
-            <form action="/panel" method="POST" style="display:inline;">
-              <input type="hidden" name="action" value="delete_post">
-              <input type="hidden" name="post_id" value="${p.id}">
-              <button type="submit">Delete</button>
-            </form>
-          </td>
-        </tr>
-      `).join('');
-    }
-    function editPost(id, artist, title, year) {
-      document.getElementById('post-action').value = 'edit_post';
-      document.getElementById('post-id').value = id;
-      document.getElementById('var-artist').value = artist;
-      document.getElementById('var-title').value = title;
-      document.getElementById('var-year').value = year;
-      document.getElementById('create-post-title').textContent = 'Edit Post';
-    }
-    window.onload = fetchConfigAndPosts;
-  </script>
 </head>
 <body>
-  <h1>WallKpop Admin Panel</h1>
-  <div class="section">
-    <details open>
-      <summary id="create-post-title">Create New Post</summary>
-      <form action="/panel" method="POST">
-        <input type="hidden" name="action" id="post-action" value="create_post">
-        <input type="hidden" name="post_id" id="post-id">
-        <div class="form-group">
-          <label for="var-artist">Artist</label>
-          <input type="text" name="var-artist" id="var-artist" autocomplete="off" required>
-        </div>
-        <div class="form-group">
-          <label for="var-title">Title</label>
-          <input type="text" name="var-title" id="var-title" autocomplete="off" required>
-        </div>
-        <div class="form-group">
-          <label for="var-year">Year</label>
-          <input type="text" name="var-year" id="var-year" autocomplete="off" required>
-        </div>
-        <input type="submit" value="Submit">
-      </form>
-    </details>
-  </div>
-  <div class="section">
-    <details>
-      <summary>Manage Posts</summary>
-      <table id="posts-table">
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Artist</th>
-            <th>Title</th>
-            <th>Year</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </details>
-  </div>
-  <div class="section">
-    <details>
-      <summary>Edit Site Configuration</summary>
-      <form action="/panel" method="POST">
-        <input type="hidden" name="action" value="save_config">
-        <div class="form-group">
-          <label for="meta">Meta Tags (HTML)</label>
-          <textarea name="meta" id="meta"></textarea>
-        </div>
-        <div class="form-group">
-          <label for="header">Header (HTML)</label>
-          <textarea name="header" id="header"></textarea>
-        </div>
-        <div class="form-group">
-          <label for="index">Index Content (HTML)</label>
-          <textarea name="index" id="index"></textarea>
-        </div>
-        <div class="form-group">
-          <label for="footer">Footer (HTML)</label>
-          <textarea name="footer" id="footer"></textarea>
-        </div>
-        <div class="form-group">
-          <label for="css">CSS</label>
-          <textarea name="css" id="css"></textarea>
-        </div>
-        <div class="form-group">
-          <label for="sitemap">Sitemap (XML)</label>
-          <textarea name="sitemap" id="sitemap"></textarea>
-        </div>
-        <div class="form-group">
-          <label for="robots">robots.txt</label>
-          <textarea name="robots" id="robots"></textarea>
-        </div>
-        <input type="submit" value="Save Configuration">
-      </form>
-    </details>
-  </div>
-  <p><a href="/">Back to Home</a></p>
+  <h1>Create New Post</h1>
+  <form action="/panel" method="POST">
+    <div class="form-group">
+      <label for="var-artist">Artist</label>
+      <input type="text" name="var-artist" id="var-artist" autocomplete="off" required>
+    </div>
+    <div class="form-group">
+      <label for="var-title">Title</label>
+      <input type="text" name="var-title" id="var-title" autocomplete="off" required>
+    </div>
+    <div class="form-group">
+      <label for="var-year">Year</label>
+      <input type="text" name="var-year" id="var-year" autocomplete="off" required>
+    </div>
+    <div class="form-group">
+      <label for="var-album">Album</label>
+      <input type="text" name="var-album" id="var-album" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label for="var-genre">Genre</label>
+      <input type="text" name="var-genre" id="var-genre" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label for="var-duration">Duration (e.g., 3:45)</label>
+      <input type="text" name="var-duration" id="var-duration" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label for="var-size">Size (MB)</label>
+      <input type="text" name="var-size" id="var-size" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label for="var-size128">Size 128kbps (MB)</label>
+      <input type="text" name="var-size128" id="var-size128" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label for="var-size320">Size 320kbps (MB)</label>
+      <input type="text" name="var-size320" id="var-size320" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label for="var-bitrate">Bitrate (kbps)</label>
+      <input type="text" name="var-bitrate" id="var-bitrate" value="192" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label for="var-bitrate128">Bitrate 128kbps</label>
+      <input type="text" name="var-bitrate128" id="var-bitrate128" value="128" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label for="var-bitrate320">Bitrate 320kbps</label>
+      <input type="text" name="var-bitrate320" id="var-bitrate320" value="320" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label for="var-availablebitrate128">Available Bitrate 128kbps (on/off)</label>
+      <input type="text" name="var-availablebitrate128" id="var-availablebitrate128" value="on" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label for="var-availablebitrate320">Available Bitrate 320kbps (on/off)</label>
+      <input type="text" name="var-availablebitrate320" id="var-availablebitrate320" value="off" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label for="var-thumb">Thumbnail URL</label>
+      <input type="text" name="var-thumb" id="var-thumb" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label for="var-link">Audio Link (Wallkpop)</label>
+      <input type="text" name="var-link" id="var-link" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label for="var-link2">Audio Link (GDrive)</label>
+      <input type="text" name="var-link2" id="var-link2" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label for="var-url128">URL 128kbps</label>
+      <input type="text" name="var-url128" id="var-url128" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label for="var-url320">URL 320kbps</label>
+      <input type="text" name="var-url320" id="var-url320" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label for="var-lyricstimestamp">Lyrics with Timestamp</label>
+      <textarea name="var-lyricstimestamp" id="var-lyricstimestamp"></textarea>
+    </div>
+    <div class="form-group">
+      <label for="var-available">Lyrics Available (on/off)</label>
+      <input type="text" name="var-available" id="var-available" value="off" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label for="var-availabletimestamp">Timestamp Available (on/off)</label>
+      <input type="text" name="var-availabletimestamp" id="var-availabletimestamp" value="off" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label for="var-name">Name</label>
+      <input type="text" name="var-name" id="var-name" autocomplete="off">
+    </div>
+    <input type="submit" value="Submit">
+  </form>
 </body>
 </html>
