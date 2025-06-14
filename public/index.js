@@ -203,13 +203,11 @@ async function fetchPosts() {
 
 // Panel route
 app.get('/panel', (req, res) => {
-  const panelPath = path.join(__dirname, 'panel.html');
-  fs.access(panelPath, fs.constants.F_OK, (err) => {
+  res.sendFile(path.join(__dirname, 'public', 'panel.html'), (err) => {
     if (err) {
-      console.error('panel.html not found:', err.message);
-      return res.status(404).send('Panel page not found. Please ensure panel.html is in the project root.');
+      console.error('Failed to serve panel.html:', err.message);
+      res.status(404).send('Panel page not found. Ensure panel.html is in the public directory.');
     }
-    res.sendFile(panelPath);
   });
 });
 
