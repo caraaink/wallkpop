@@ -1,0 +1,13 @@
+{
+  "name": "wallkpop",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "next": "^14.2.3",
+    "@vercel/postgres": "^0.8.0"
+  }
+}
