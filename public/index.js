@@ -261,8 +261,9 @@ const parseBlogTags = (template, posts, options = {}) => {
       .replace(/%sn%/g, index + 1)
       .replace(/%date=Y-m-d%/g, getFormattedDate('Y-m-d'))
       .replace(/%text%/g, post.year || 'Unknown')
-      .replace(/:url-1\(:to-file:\):/g, `/track/${post.id}/${permalink}`) // Use the generated permalink
-      .replace(/:page_url:/g, `https://wallkpop.vercel.app/track/${post.id}/${permalink}`);
+      .replace(/:url-1\(:to-file:\):/g, `/track/${post.id}/${permalink}`)
+      .replace(/:page_url:/g, `https://wallkpop.vercel.app/track/${post.id}/${permalink}`)
+      .replace(/:permalink:/g, permalink); // New replacement for href attributes
     result += item;
   });
   return result;
@@ -298,7 +299,7 @@ app.get('/', (req, res) => {
               </td>
               <td align="left">
                 <span>
-                  <a title="Download %title% mp3" href="/track/%id%/${generatePermalink('%var-artist%', '%var-title%')}"><b>%var-artist% - %var-title%</b></a><br>
+                  <a title="Download %title% mp3" href="/track/%id%/:permalink:"><b>%var-artist% - %var-title%</b></a><br>
                   <font style="font-size:12px;line-height:2;"><i class="fa fa-audio-description" aria-hidden="true"></i> %var-album%</font><br>
                   <font style="font-size:11px;line-height:1.5;">
                     <i class="fa fa-hdd-o" aria-hidden="true"></i> %var-size% MB -
@@ -435,7 +436,7 @@ app.get('/track/:id/:permalink', (req, res) => {
       }
       const relatedContent = parseBlogTags(`
         <div class="lagu">
-          <a title="Download %var-artist% - %var-title% Mp3" href="/track/%id%/${generatePermalink('%var-artist%', '%var-title%')}">%var-artist% - %var-title%</a>
+          <a title="Download %var-artist% - %var-title% Mp3" href="/track/%id%/:permalink:">%var-artist% - %var-title%</a>
         </div>`, related, { limit: 20, noMessage: '<center>No File</center>' });
 
       const content = parseBlogTags(`
@@ -571,7 +572,7 @@ app.get('/search/:query', (req, res) => {
               </td>
               <td align="left">
                 <span>
-                  <a title="Download %title% mp3" href="/track/%id%/${generatePermalink('%var-artist%', '%var-title%')}"><b>%var-artist% - %var-title%</b></a><br>
+                  <a title="Download %title% mp3" href="/track/%id%/:permalink:"><b>%var-artist% - %var-title%</b></a><br>
                   <font style="font-size:12px;line-height:2;"><i class="fa fa-audio-description" aria-hidden="true"></i> %var-album%</font><br>
                   <font style="font-size:11px;line-height:1.5;">
                     <i class="fa fa-hdd-o" aria-hidden="true"></i> %var-size% MB -
