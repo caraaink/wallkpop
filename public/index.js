@@ -12,6 +12,9 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static('public'));
 
+// Log GITHUB_TOKEN for debugging
+console.log('GITHUB_TOKEN:', process.env.GITHUB_TOKEN ? 'Set (first 4 chars: ' + process.env.GITHUB_TOKEN.slice(0, 4) + ')' : 'Not set');
+
 // Configure multer for file uploads
 const upload = multer({
   dest: '/tmp/uploads/',
@@ -51,7 +54,7 @@ async function getGitHubFile(path) {
     await kv.set(cacheKey, data, { ex: 604800 });
     return data;
   } catch (error) {
-    console.error(`Error fetching GitHub file ${path}:`, error);
+    console.error(`Error fetching GitHub file ${path}:`, error.response?.data || error.message);
     throw error;
   }
 }
@@ -73,7 +76,7 @@ async function updateGitHubFile(path, content, message, sha = null) {
     await kv.set(cacheKey, content, { ex: 604800 });
     return response.data.commit.sha;
   } catch (error) {
-    console.error(`Error updating GitHub file ${path}:`, error);
+    console.error(`Error updating GitHub file ${path}:`, error.response?.data || error.message);
     throw error;
   }
 }
@@ -105,7 +108,7 @@ async function getAllTrackFiles() {
     await kv.set(cacheKey, files, { ex: 604800 });
     return files;
   } catch (error) {
-    console.error('Error fetching track files:', error);
+    console.error('Error fetching track files:', error.response?.data || error.message);
     if (error.status === 404) return [];
     throw error;
   }
@@ -118,7 +121,7 @@ async function getLatestId() {
     if (!files || files.length === 0) return 0;
     return Math.max(...files.map(item => item.id));
   } catch (error) {
-    console.error('Error getting latest ID:', error);
+    console.error('Error getting latest ID:', error.response?.data || error.message);
     return 0;
   }
 }
