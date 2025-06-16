@@ -78,15 +78,48 @@ async function updateGitHubFile(path, content, message, sha = null) {
   }
 }
 
-// Helper function to get latest ID from index.json
+// Helper function to get all track files from GitHub
+async function getAllTrackFiles() {
+  try {
+    const cacheKey = 'github:track_files';
+    const cached = await kv.get(cacheKey);
+    if (cached) return cached;
+
+    const response = await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', {
+      owner: repoOwner,
+      repo: repoName,
+      path: 'file',
+      ref: branch
+    });
+
+    const files = response.data
+      .filter(item => item.type === 'file' && item.name.endsWith('.json'))
+      .map(item => ({
+        id: parseInt(item.name.split('-')[0], 10),
+        slug: item.name.replace(/^\d+-/, '').replace(/\.json$/, ''),
+        file: item.path,
+        sha: item.sha
+      }))
+      .filter(item => !isNaN(item.id));
+
+    await kv.set(cacheKey, files, { ex: 604800 });
+    return files;
+  } catch (error) {
+    console.error('Error fetching track files:', error);
+    if (error.status === 404) return [];
+    throw error;
+  }
+}
+
+// Helper function to get latest ID from track files
 async function getLatestId() {
   try {
-    const index = await getGitHubFile('file/index.json');
-    if (!index || index.length === 0) return 0;
-    return Math.max(...index.map(item => item.id));
+    const files = await getAllTrackFiles();
+    if (!files || files.length === 0) return 0;
+    return Math.max(...files.map(item => item.id));
   } catch (error) {
-    if (error.status === 404) return 0;
-    throw error;
+    console.error('Error getting latest ID:', error);
+    return 0;
   }
 }
 
@@ -283,9 +316,9 @@ const parseBlogTags = (template, posts, options = {}) => {
 // Root route to list all posts
 app.get('/', async (req, res) => {
   try {
-    const index = await getGitHubFile('file/index.json');
+    const files = await getAllTrackFiles();
     const posts = await Promise.all(
-      index.slice(0, 10).map(async (item) => {
+      files.slice(0, 10).map(async (item) => {
         const post = await getGitHubFile(item.file);
         return { ...post, id: item.id };
       })
@@ -633,36 +666,8 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
       created_at: new Date().toISOString()
     };
 
-    // Update index.json
-    let index;
-    try {
-      index = await getGitHubFile('file/index.json');
-    } catch (error) {
-      if (error.status === 404) {
-        index = [];
-      } else {
-        throw error;
-      }
-    }
-    index.push({ id: newId, slug, file: filePath });
-
-    // Get SHA for index.json
-    let indexSha;
-    try {
-      const indexResponse = await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', {
-        owner: repoOwner,
-        repo: repoName,
-        path: 'file/index.json',
-        ref: branch
-      });
-      indexSha = indexResponse.data.sha;
-    } catch (error) {
-      if (error.status !== 404) throw error;
-    }
-
-    // Save track and update index
+    // Save track
     await updateGitHubFile(filePath, trackData, `Add track ${newId}: ${trackData.artist} - ${trackData.title}`);
-    await updateGitHubFile('file/index.json', index, `Update index with track ${newId}`, indexSha);
 
     res.redirect(`/track/${newId}/${slug}`);
   } catch (error) {
@@ -675,24 +680,18 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
 app.get('/track/:id/:permalink', async (req, res) => {
   try {
     const { id } = req.params;
-    const index = await getGitHubFile('file/index.json');
-    const trackItem = index.find(item => item.id === parseInt(id));
+    const files = await getAllTrackFiles();
+    const trackItem = files.find(item => item.id === parseInt(id));
     if (!trackItem) return res.status(404).send('Post not found');
 
     const post = await getGitHubFile(trackItem.file);
     // Increment hits
     post.hits = (post.hits || 0) + 1;
-    const fileResponse = await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', {
-      owner: repoOwner,
-      repo: repoName,
-      path: trackItem.file,
-      ref: branch
-    });
-    await updateGitHubFile(trackItem.file, post, `Increment hits for track ${id}`, fileResponse.data.sha);
+    await updateGitHubFile(trackItem.file, post, `Increment hits for track ${id}`, trackItem.sha);
 
     // Fetch related posts (same artist)
     const related = (await Promise.all(
-      index
+      files
         .filter(item => item.id !== parseInt(id))
         .map(async (item) => {
           const track = await getGitHubFile(item.file);
@@ -823,23 +822,22 @@ app.get('/track/:id/:permalink', async (req, res) => {
 app.get('/search/:query', async (req, res) => {
   try {
     const query = req.params.query.toLowerCase();
-    const index = await getGitHubFile('file/index.json');
+    const files = await getAllTrackFiles();
     const posts = await Promise.all(
-      index
-        .filter(async (item) => {
+      files
+        .map(async (item) => {
           const track = await getGitHubFile(item.file);
-          return (
+          if (
             track.artist.toLowerCase().includes(query) ||
             track.title.toLowerCase().includes(query) ||
             track.year.toString().includes(query)
-          );
-        })
-        .slice(0, 40)
-        .map(async (item) => {
-          const post = await getGitHubFile(item.file);
-          return { ...post, id: item.id };
+          ) {
+            return { ...track, id: item.id };
+          }
+          return null;
         })
     );
+    const filteredPosts = posts.filter(post => post !== null).slice(0, 40);
 
     const searchResults = parseBlogTags(`
       <div class="album-list">
@@ -869,7 +867,7 @@ app.get('/search/:query', async (req, res) => {
             </tr>
           </tbody>
         </table>
-      </div>`, posts, { limit: 40, noMessage: '<center>No File</center>' });
+      </div>`, filteredPosts, { limit: 40, noMessage: '<center>No File</center>' });
 
     const html = `
       <!DOCTYPE html>
@@ -953,36 +951,8 @@ app.post('/api/post', async (req, res) => {
       created_at: new Date().toISOString()
     };
 
-    // Update index.json
-    let index;
-    try {
-      index = await getGitHubFile('file/index.json');
-    } catch (error) {
-      if (error.status === 404) {
-        index = [];
-      } else {
-        throw error;
-      }
-    }
-    index.push({ id: newId, slug, file: filePath });
-
-    // Get SHA for index.json
-    let indexSha;
-    try {
-      const indexResponse = await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', {
-        owner: repoOwner,
-        repo: repoName,
-        path: 'file/index.json',
-        ref: branch
-      });
-      indexSha = indexResponse.data.sha;
-    } catch (error) {
-      if (error.status !== 404) throw error;
-    }
-
-    // Save track and update index
+    // Save track
     await updateGitHubFile(filePath, trackData, `Add track ${newId}: ${artist} - ${title}`);
-    await updateGitHubFile('file/index.json', index, `Update index with track ${newId}`, indexSha);
 
     res.json({ id: newId, permalink: `/track/${newId}/${slug}` });
   } catch (error) {
