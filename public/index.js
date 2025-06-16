@@ -39,7 +39,10 @@ async function getGitHubFile(path) {
   try {
     const cacheKey = `github:${path}`;
     const cached = await kv.get(cacheKey);
-    if (cached) return cached;
+    if (cached) {
+      console.log(`Returning cached file for ${path}`);
+      return cached;
+    }
 
     const response = await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', {
       owner: repoOwner,
@@ -48,13 +51,30 @@ async function getGitHubFile(path) {
       ref: branch
     });
 
+    if (!response.data.content) {
+      console.error(`No content found for ${path}`);
+      throw new Error(`No content found for ${path}`);
+    }
+
     const content = Buffer.from(response.data.content, 'base64').toString('utf-8');
-    const data = JSON.parse(content);
+    if (!content.trim()) {
+      console.error(`Empty content for ${path}`);
+      throw new Error(`Empty content for ${path}`);
+    }
+
+    let data;
+    try {
+      data = JSON.parse(content);
+    } catch (parseError) {
+      console.error(`Invalid JSON in ${path}: ${content.slice(0, 100)}...`);
+      throw new Error(`Invalid JSON in ${path}: ${parseError.message}`);
+    }
 
     await kv.set(cacheKey, data, { ex: 604800 });
+    console.log(`Cached file for ${path}`);
     return data;
   } catch (error) {
-    console.error(`Error fetching GitHub file ${path}:`, error.response?.data || error.message);
+    console.error(`Error fetching GitHub file ${path}:`, error.message);
     throw error;
   }
 }
@@ -103,22 +123,27 @@ async function getAllTrackFiles() {
       ref: branch
     });
 
-    const files = response.data
-      .filter(item => item.type === 'file' && item.name.endsWith('.json'))
-      .map(item => {
-        const id = parseInt(item.name.split('-')[0], 10);
-        if (isNaN(id)) {
-          console.warn(`Invalid ID in filename: ${item.name}`);
-          return null;
-        }
-        return {
-          id,
-          slug: item.name.replace(/^\d+-/, '').replace(/\.json$/, ''),
-          file: item.path,
-          sha: item.sha
-        };
-      })
-      .filter(item => item !== null);
+    const files = [];
+    const seenIds = new Set();
+    for (const item of response.data) {
+      if (item.type !== 'file' || !item.name.endsWith('.json')) continue;
+      const id = parseInt(item.name.split('-')[0], 10);
+      if (isNaN(id)) {
+        console.warn(`Invalid ID in filename: ${item.name}`);
+        continue;
+      }
+      if (seenIds.has(id)) {
+        console.warn(`Duplicate ID ${id} found in filename: ${item.name}`);
+        continue;
+      }
+      seenIds.add(id);
+      files.push({
+        id,
+        slug: item.name.replace(/^\d+-/, '').replace(/\.json$/, ''),
+        file: item.path,
+        sha: item.sha
+      });
+    }
 
     await kv.set(cacheKey, files, { ex: 604800 });
     console.log(`Cached ${files.length} track files`);
@@ -135,9 +160,12 @@ async function getLatestId() {
   try {
     const files = await getAllTrackFiles();
     if (!files || files.length === 0) return 0;
-    return Math.max(...files.map(item => item.id));
+    const ids = files.map(item => item.id);
+    const maxId = Math.max(...ids);
+    console.log(`Latest ID: ${maxId}, IDs found: ${ids.join(', ')}`);
+    return maxId;
   } catch (error) {
-    console.error('Error getting latest ID:', error.response?.data || error.message);
+    console.error('Error getting latest ID:', error.message);
     return 0;
   }
 }
@@ -336,12 +364,16 @@ const parseBlogTags = (template, posts, options = {}) => {
 app.get('/', async (req, res) => {
   try {
     const files = await getAllTrackFiles();
-    const posts = await Promise.all(
-      files.slice(0, 10).map(async (item) => {
+    const posts = [];
+    for (const item of files.slice(0, 10)) {
+      try {
         const post = await getGitHubFile(item.file);
-        return { ...post, id: item.id };
-      })
-    );
+        posts.push({ ...post, id: item.id });
+      } catch (error) {
+        console.error(`Skipping file ${item.file} due to error: ${error.message}`);
+        continue;
+      }
+    }
 
     const postList = parseBlogTags(`
       <div class="album-list">
@@ -652,6 +684,11 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
     // Generate ID and slug
     const latestId = await getLatestId();
     const newId = latestId + 1;
+    const existingFiles = await getAllTrackFiles();
+    if (existingFiles.some(file => file.id === newId)) {
+      console.error(`ID ${newId} already exists`);
+      return res.status(400).send('ID conflict detected');
+    }
     const slug = generatePermalink(trackData.artist, trackData.title);
     const filePath = `file/${newId}-${slug}.json`;
 
@@ -703,7 +740,7 @@ app.get('/track/:id/:permalink', async (req, res) => {
   try {
     const { id } = req.params;
     const files = await getAllTrackFiles();
-    console.log(`Track files: ${JSON.stringify(files)}`); // Debug log
+    console.log(`Track files: ${JSON.stringify(files)}`);
     const trackItem = files.find(item => item.id === parseInt(id));
     if (!trackItem) {
       console.error(`Track with ID ${id} not found in files`);
@@ -720,11 +757,16 @@ app.get('/track/:id/:permalink', async (req, res) => {
       files
         .filter(item => item.id !== parseInt(id))
         .map(async (item) => {
-          const track = await getGitHubFile(item.file);
-          return { id: item.id, artist: track.artist, title: track.title };
+          try {
+            const track = await getGitHubFile(item.file);
+            return { id: item.id, artist: track.artist, title: track.title };
+          } catch (error) {
+            console.error(`Skipping related file ${item.file}: ${error.message}`);
+            return null;
+          }
         })
     ))
-      .filter(item => item.artist === post.artist)
+      .filter(item => item !== null && item.artist === post.artist)
       .slice(0, 20);
 
     const relatedContent = parseBlogTags(`
@@ -849,21 +891,23 @@ app.get('/search/:query', async (req, res) => {
   try {
     const query = req.params.query.toLowerCase();
     const files = await getAllTrackFiles();
-    const posts = await Promise.all(
-      files
-        .map(async (item) => {
-          const track = await getGitHubFile(item.file);
-          if (
-            track.artist.toLowerCase().includes(query) ||
-            track.title.toLowerCase().includes(query) ||
-            track.year.toString().includes(query)
-          ) {
-            return { ...track, id: item.id };
-          }
-          return null;
-        })
-    );
-    const filteredPosts = posts.filter(post => post !== null).slice(0, 40);
+    const posts = [];
+    for (const item of files) {
+      try {
+        const track = await getGitHubFile(item.file);
+        if (
+          track.artist.toLowerCase().includes(query) ||
+          track.title.toLowerCase().includes(query) ||
+          track.year.toString().includes(query)
+        ) {
+          posts.push({ ...track, id: item.id });
+        }
+      } catch (error) {
+        console.error(`Skipping search file ${item.file}: ${error.message}`);
+        continue;
+      }
+    }
+    const filteredPosts = posts.slice(0, 40);
 
     const searchResults = parseBlogTags(`
       <div class="album-list">
@@ -944,6 +988,11 @@ app.post('/api/post', async (req, res) => {
     // Generate ID and slug
     const latestId = await getLatestId();
     const newId = latestId + 1;
+    const existingFiles = await getAllTrackFiles();
+    if (existingFiles.some(file => file.id === newId)) {
+      console.error(`ID ${newId} already exists`);
+      return res.status(400).json({ error: 'ID conflict detected' });
+    }
     const slug = generatePermalink(artist, title);
     const filePath = `file/${newId}-${slug}.json`;
 
