@@ -3,11 +3,27 @@ const bodyParser = require('body-parser');
 const slugify = require('slugify');
 const { Octokit } = require('@octokit/core');
 const { kv } = require('@vercel/kv');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs').promises;
 
 const app = express();
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static('public'));
+
+// Configure multer for file uploads
+const upload = multer({
+  dest: '/tmp/uploads/',
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'application/json') {
+      cb(null, true);
+    } else {
+      cb(new Error('Only JSON files are allowed'));
+    }
+  }
+});
 
 // GitHub API setup
 const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
@@ -19,11 +35,9 @@ const branch = 'main';
 async function getGitHubFile(path) {
   try {
     const cacheKey = `github:${path}`;
-    // Check cache first
     const cached = await kv.get(cacheKey);
     if (cached) return cached;
 
-    // Fetch from GitHub
     const response = await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', {
       owner: repoOwner,
       repo: repoName,
@@ -34,7 +48,6 @@ async function getGitHubFile(path) {
     const content = Buffer.from(response.data.content, 'base64').toString('utf-8');
     const data = JSON.parse(content);
 
-    // Cache for 7 days (604800 seconds)
     await kv.set(cacheKey, data, { ex: 604800 });
     return data;
   } catch (error) {
@@ -56,7 +69,6 @@ async function updateGitHubFile(path, content, message, sha = null) {
       sha: sha || undefined
     });
 
-    // Update cache
     const cacheKey = `github:${path}`;
     await kv.set(cacheKey, content, { ex: 604800 });
     return response.data.commit.sha;
@@ -73,7 +85,7 @@ async function getLatestId() {
     if (!index || index.length === 0) return 0;
     return Math.max(...index.map(item => item.id));
   } catch (error) {
-    if (error.status === 404) return 0; // index.json not found
+    if (error.status === 404) return 0;
     throw error;
   }
 }
@@ -225,7 +237,7 @@ const getFooter = (pageUrl) => `
 
 // Parse [blog] tags
 const parseBlogTags = (template, posts, options = {}) => {
-  const { limit = 10, order = 'created_at DESC', noMessage = '<center>No File</center>', to = ':url-1(:to-file:):' } = options;
+  const { limit = 10, noMessage = '<center>No File</center>', to = ':url-1(:to-file:):' } = options;
   if (!posts || posts.length === 0) return noMessage;
 
   let result = '';
@@ -368,106 +380,134 @@ app.get('/panel', (req, res) => {
         .form-group textarea { height: 100px; }
         .submit-btn { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
         .submit-btn:hover { background: #0056b3; }
+        .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
+        .tab { padding: 10px; cursor: pointer; border: 1px solid #ddd; border-radius: 4px; }
+        .tab.active { background: #007bff; color: white; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
       </style>
+      <script>
+        function toggleTab(tabId) {
+          document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+          document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+          document.getElementById(tabId).classList.add('active');
+          document.getElementById(tabId + '-content').classList.add('active');
+        }
+      </script>
     </head>
     <body>
       <div class="form-container">
         <h1>Upload New Track</h1>
-        <form action="/panel" method="POST">
-          <div class="form-group">
-            <label for="var-artist">Artist</label>
-            <input type="text" id="var-artist" name="var-artist" required>
-          </div>
-          <div class="form-group">
-            <label for="var-title">Title</label>
-            <input type="text" id="var-title" name="var-title" required>
-          </div>
-          <div class="form-group">
-            <label for="var-year">Year</label>
-            <input type="number" id="var-year" name="var-year" required>
-          </div>
-          <div class="form-group">
-            <label for="var-album">Album</label>
-            <input type="text" id="var-album" name="var-album">
-          </div>
-          <div class="form-group">
-            <label for="var-genre">Genre</label>
-            <input type="text" id="var-genre" name="var-genre">
-          </div>
-          <div class="form-group">
-            <label for="var-duration">Duration (e.g., 3:45)</label>
-            <input type="text" id="var-duration" name="var-duration">
-          </div>
-          <div class="form-group">
-            <label for="var-size">Size (MB)</label>
-            <input type="text" id="var-size" name="var-size">
-          </div>
-          <div class="form-group">
-            <label for="var-size128">Size 128kbps (MB)</label>
-            <input type="text" id="var-size128" name="var-size128">
-          </div>
-          <div class="form-group">
-            <label for="var-size192">Size 192kbps (MB)</label>
-            <input type="text" id="var-size192" name="var-size192">
-          </div>
-          <div class="form-group">
-            <label for="var-size320">Size 320kbps (MB)</label>
-            <input type="text" id="var-size320" name="var-size320">
-          </div>
-          <div class="form-group">
-            <label for="var-bitrate">Bitrate (kbps)</label>
-            <input type="text" id="var-bitrate" name="var-bitrate" value="192">
-          </div>
-          <div class="form-group">
-            <label for="var-bitrate128">Bitrate 128kbps</label>
-            <input type="text" id="var-bitrate128" name="var-bitrate128" value="128">
-          </div>
-          <div class="form-group">
-            <label for="var-bitrate192">Bitrate 192kbps</label>
-            <input type="text" id="var-bitrate192" name="var-bitrate192" value="192">
-          </div>
-          <div class="form-group">
-            <label for="var-bitrate320">Bitrate 320kbps</label>
-            <input type="text" id="var-bitrate320" name="var-bitrate320" value="320">
-          </div>
-          <div class="form-group">
-            <label for="var-thumb">Thumbnail URL</label>
-            <input type="text" id="var-thumb" name="var-thumb">
-          </div>
-          <div class="form-group">
-            <label for="var-link">Download Link</label>
-            <input type="text" id="var-link" name="var-link">
-          </div>
-          <div class="form-group">
-            <label for="var-link2">Alternative Download Link</label>
-            <input type="text" id="var-link2" name="var-link2">
-          </div>
-          <div class="form-group">
-            <label for="var-url128">Download URL (128kbps)</label>
-            <input type="text" id="var-url128" name="var-url128">
-          </div>
-          <div class="form-group">
-            <label for="var-url192">Download URL (192kbps)</label>
-            <input type="text" id="var-url192" name="var-url192">
-          </div>
-          <div class="form-group">
-            <label for="var-url320">Download URL (320kbps)</label>
-            <input type="text" id="var-url320" name="var-url320">
-          </div>
-          <div class="form-group">
-            <label for="var-lyricstimestamp">Lyrics Timestamp</label>
-            <textarea id="var-lyricstimestamp" name="var-lyricstimestamp"></textarea>
-          </div>
-          <div class="form-group">
-            <label for="var-lyrics">Lyrics</label>
-            <textarea id="var-lyrics" name="var-lyrics"></textarea>
-          </div>
-          <div class="form-group">
-            <label for="var-name">File Name</label>
-            <input type="text" id="var-name" name="var-name">
-          </div>
-          <button type="submit" class="submit-btn">Upload Track</button>
-        </form>
+        <div class="tabs">
+          <div class="tab active" id="json-tab" onclick="toggleTab('json-tab')">Upload JSON</div>
+          <div class="tab" id="manual-tab" onclick="toggleTab('manual-tab')">Manual Input</div>
+        </div>
+        <div id="json-tab-content" class="tab-content active">
+          <form action="/panel" method="POST" enctype="multipart/form-data">
+            <div class="form-group">
+              <label for="json-file">Upload JSON File</label>
+              <input type="file" id="json-file" name="json-file" accept=".json" required>
+            </div>
+            <button type="submit" class="submit-btn">Upload JSON</button>
+          </form>
+        </div>
+        <div id="manual-tab-content" class="tab-content">
+          <form action="/panel" method="POST">
+            <div class="form-group">
+              <label for="var-artist">Artist</label>
+              <input type="text" id="var-artist" name="var-artist" required>
+            </div>
+            <div class="form-group">
+              <label for="var-title">Title</label>
+              <input type="text" id="var-title" name="var-title" required>
+            </div>
+            <div class="form-group">
+              <label for="var-year">Year</label>
+              <input type="number" id="var-year" name="var-year" required>
+            </div>
+            <div class="form-group">
+              <label for="var-album">Album</label>
+              <input type="text" id="var-album" name="var-album">
+            </div>
+            <div class="form-group">
+              <label for="var-genre">Genre</label>
+              <input type="text" id="var-genre" name="var-genre">
+            </div>
+            <div class="form-group">
+              <label for="var-duration">Duration (e.g., 3:45)</label>
+              <input type="text" id="var-duration" name="var-duration">
+            </div>
+            <div class="form-group">
+              <label for="var-size">Size (MB)</label>
+              <input type="text" id="var-size" name="var-size">
+            </div>
+            <div class="form-group">
+              <label for="var-size128">Size 128kbps (MB)</label>
+              <input type="text" id="var-size128" name="var-size128">
+            </div>
+            <div class="form-group">
+              <label for="var-size192">Size 192kbps (MB)</label>
+              <input type="text" id="var-size192" name="var-size192">
+            </div>
+            <div class="form-group">
+              <label for="var-size320">Size 320kbps (MB)</label>
+              <input type="text" id="var-size320" name="var-size320">
+            </div>
+            <div class="form-group">
+              <label for="var-bitrate">Bitrate (kbps)</label>
+              <input type="text" id="var-bitrate" name="var-bitrate" value="192">
+            </div>
+            <div class="form-group">
+              <label for="var-bitrate128">Bitrate 128kbps</label>
+              <input type="text" id="var-bitrate128" name="var-bitrate128" value="128">
+            </div>
+            <div class="form-group">
+              <label for="var-bitrate192">Bitrate 192kbps</label>
+              <input type="text" id="var-bitrate192" name="var-bitrate192" value="192">
+            </div>
+            <div class="form-group">
+              <label for="var-bitrate320">Bitrate 320kbps</label>
+              <input type="text" id="var-bitrate320" name="var-bitrate320" value="320">
+            </div>
+            <div class="form-group">
+              <label for="var-thumb">Thumbnail URL</label>
+              <input type="text" id="var-thumb" name="var-thumb">
+            </div>
+            <div class="form-group">
+              <label for="var-link">Download Link</label>
+              <input type="text" id="var-link" name="var-link">
+            </div>
+            <div class="form-group">
+              <label for="var-link2">Alternative Download Link</label>
+              <input type="text" id="var-link2" name="var-link2">
+            </div>
+            <div class="form-group">
+              <label for="var-url128">Download URL (128kbps)</label>
+              <input type="text" id="var-url128" name="var-url128">
+            </div>
+            <div class="form-group">
+              <label for="var-url192">Download URL (192kbps)</label>
+              <input type="text" id="var-url192" name="var-url192">
+            </div>
+            <div class="form-group">
+              <label for="var-url320">Download URL (320kbps)</label>
+              <input type="text" id="var-url320" name="var-url320">
+            </div>
+            <div class="form-group">
+              <label for="var-lyricstimestamp">Lyrics Timestamp</label>
+              <textarea id="var-lyricstimestamp" name="var-lyricstimestamp"></textarea>
+            </div>
+            <div class="form-group">
+              <label for="var-lyrics">Lyrics</label>
+              <textarea id="var-lyrics" name="var-lyrics"></textarea>
+            </div>
+            <div class="form-group">
+              <label for="var-name">File Name</label>
+              <input type="text" id="var-name" name="var-name">
+            </div>
+            <button type="submit" class="submit-btn">Upload Track</button>
+          </form>
+        </div>
       </div>
     </body>
     </html>
@@ -476,76 +516,120 @@ app.get('/panel', (req, res) => {
 });
 
 // Handle post submission from panel
-app.post('/panel', async (req, res) => {
+app.post('/panel', upload.single('json-file'), async (req, res) => {
   try {
-    const {
-      'var-artist': artist,
-      'var-title': title,
-      'var-year': year,
-      'var-album': album,
-      'var-genre': genre,
-      'var-duration': duration,
-      'var-size': size,
-      'var-size128': size128,
-      'var-size192': size192,
-      'var-size320': size320,
-      'var-bitrate': bitrate,
-      'var-bitrate128': bitrate128,
-      'var-bitrate192': bitrate192,
-      'var-bitrate320': bitrate320,
-      'var-thumb': thumb,
-      'var-link': link,
-      'var-link2': link2,
-      'var-url128': url128,
-      'var-url192': url192,
-      'var-url320': url320,
-      'var-lyricstimestamp': lyricstimestamp,
-      'var-lyrics': lyrics,
-      'var-name': name
-    } = req.body;
+    let trackData;
+    if (req.file) {
+      // Handle JSON file upload
+      const fileContent = await fs.readFile(req.file.path, 'utf-8');
+      trackData = JSON.parse(fileContent);
+      await fs.unlink(req.file.path); // Clean up temporary file
+    } else {
+      // Handle manual form input
+      const {
+        'var-artist': artist,
+        'var-title': title,
+        'var-year': year,
+        'var-album': album,
+        'var-genre': genre,
+        'var-duration': duration,
+        'var-size': size,
+        'var-size128': size128,
+        'var-size192': size192,
+        'var-size320': size320,
+        'var-bitrate': bitrate,
+        'var-bitrate128': bitrate128,
+        'var-bitrate192': bitrate192,
+        'var-bitrate320': bitrate320,
+        'var-thumb': thumb,
+        'var-link': link,
+        'var-link2': link2,
+        'var-url128': url128,
+        'var-url192': url192,
+        'var-url320': url320,
+        'var-lyricstimestamp': lyricstimestamp,
+        'var-lyrics': lyrics,
+        'var-name': name
+      } = req.body;
+
+      // Validate required fields
+      if (!artist || !title || !year) {
+        return res.status(400).send('Missing required fields: artist, title, or year');
+      }
+      const yearNum = parseInt(year, 10);
+      if (isNaN(yearNum)) {
+        return res.status(400).send('Invalid year value');
+      }
+
+      trackData = {
+        artist,
+        title,
+        year: yearNum,
+        album: album || null,
+        genre: genre || null,
+        duration: duration || null,
+        size: size || null,
+        size128: size128 || null,
+        size192: size192 || null,
+        size320: size320 || null,
+        bitrate: bitrate || '192',
+        bitrate128: bitrate128 || '128',
+        bitrate192: bitrate192 || '192',
+        bitrate320: bitrate320 || '320',
+        thumb: thumb || null,
+        link: link || null,
+        link2: link2 || null,
+        url128: url128 || null,
+        url192: url192 || null,
+        url320: url320 || null,
+        lyricstimestamp: lyricstimestamp || null,
+        lyrics: lyrics || null,
+        name: name || `${artist} - ${title}`
+      };
+    }
 
     // Validate required fields
-    if (!artist || !title || !year) {
-      return res.status(400).send('Missing required fields: artist, title, or year');
+    if (!trackData.artist || !trackData.title || !trackData.year) {
+      return res.status(400).send('Missing required fields in JSON: artist, title, or year');
     }
-    const yearNum = parseInt(year, 10);
+    const yearNum = parseInt(trackData.year, 10);
     if (isNaN(yearNum)) {
-      return res.status(400).send('Invalid year value');
+      return res.status(400).send('Invalid year value in JSON');
     }
 
     // Generate ID and slug
     const latestId = await getLatestId();
     const newId = latestId + 1;
-    const slug = generatePermalink(artist, title);
+    const slug = generatePermalink(trackData.artist, trackData.title);
     const filePath = `file/${newId}-${slug}.json`;
 
-    // Create track data
-    const trackData = {
+    // Finalize track data
+    trackData = {
       id: newId,
-      artist,
-      title,
+      artist: trackData.artist,
+      title: trackData.title,
       year: yearNum,
-      album: album || null,
-      genre: genre || null,
-      duration: duration || null,
-      size: size || null,
-      size128: size128 || null,
-      size192: size192 || null,
-      size320: size320 || null,
-      bitrate: bitrate || '192',
-      bitrate128: bitrate128 || '128',
-      bitrate192: bitrate192 || '192',
-      bitrate320: bitrate320 || '320',
-      thumb: thumb || null,
-      link: link || null,
-      link2: link2 || null,
-      url128: url128 || null,
-      url192: url192 || null,
-      url320: url320 || null,
+      album: trackData.album || null,
+      genre: trackData.genre || null,
+      duration: trackData.duration || null,
+      size: trackData.size || null,
+      size128: trackData.size128 || null,
+      size192: trackData.size192 || null,
+      size320: trackData.size320 || null,
+      bitrate: trackData.bitrate || '192',
+      bitrate128: trackData.bitrate128 || '128',
+      bitrate192: trackData.bitrate192 || '192',
+      bitrate320: trackData.bitrate320 || '320',
+      thumb: trackData.thumb || null,
+      link: trackData.link || null,
+      link2: trackData.link2 || null,
+      url128: trackData.url128 || null,
+      url192: trackData.url192 || null,
+      url320: trackData.url320 || null,
       hits: 0,
-      lyricstimestamp: lyricstimestamp || null,
-      lyrics: lyrics || null,
-      name: name || `${artist} - ${title}`,
+      lyricstimestamp: trackData.lyricstimestamp || null,
+      lyrics: trackData.lyrics || null,
+      name: trackData.name || `${trackData.artist} - ${trackData.title}`,
       created_at: new Date().toISOString()
     };
 
@@ -577,7 +661,7 @@ app.post('/panel', async (req, res) => {
     }
 
     // Save track and update index
-    await updateGitHubFile(filePath, trackData, `Add track ${newId}: ${artist} - ${title}`);
+    await updateGitHubFile(filePath, trackData, `Add track ${newId}: ${trackData.artist} - ${trackData.title}`);
     await updateGitHubFile('file/index.json', index, `Update index with track ${newId}`, indexSha);
 
     res.redirect(`/track/${newId}/${slug}`);
@@ -607,18 +691,16 @@ app.get('/track/:id/:permalink', async (req, res) => {
     await updateGitHubFile(trackItem.file, post, `Increment hits for track ${id}`, fileResponse.data.sha);
 
     // Fetch related posts (same artist)
-    const related = index
-      .filter(item => item.id !== parseInt(id))
-      .filter(item => {
-        const track = getGitHubFile(item.file);
-        return track.artist === post.artist;
-      })
-      .slice(0, 20)
-      .map(item => ({
-        id: item.id,
-        artist: post.artist,
-        title: getGitHubFile(item.file).title
-      }));
+    const related = (await Promise.all(
+      index
+        .filter(item => item.id !== parseInt(id))
+        .map(async (item) => {
+          const track = await getGitHubFile(item.file);
+          return { id: item.id, artist: track.artist, title: track.title };
+        })
+    ))
+      .filter(item => item.artist === post.artist)
+      .slice(0, 20);
 
     const relatedContent = parseBlogTags(`
       <div class="lagu">
