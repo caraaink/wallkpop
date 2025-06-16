@@ -74,6 +74,11 @@ async function updateGitHubFile(path, content, message, sha = null) {
 
     const cacheKey = `github:${path}`;
     await kv.set(cacheKey, content, { ex: 604800 });
+
+    // Invalidate track files cache
+    await kv.del('github:track_files');
+    console.log(`Invalidated cache for github:track_files after updating ${path}`);
+
     return response.data.commit.sha;
   } catch (error) {
     console.error(`Error updating GitHub file ${path}:`, error.response?.data || error.message);
@@ -86,7 +91,10 @@ async function getAllTrackFiles() {
   try {
     const cacheKey = 'github:track_files';
     const cached = await kv.get(cacheKey);
-    if (cached) return cached;
+    if (cached) {
+      console.log('Returning cached track files');
+      return cached;
+    }
 
     const response = await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', {
       owner: repoOwner,
@@ -97,15 +105,23 @@ async function getAllTrackFiles() {
 
     const files = response.data
       .filter(item => item.type === 'file' && item.name.endsWith('.json'))
-      .map(item => ({
-        id: parseInt(item.name.split('-')[0], 10),
-        slug: item.name.replace(/^\d+-/, '').replace(/\.json$/, ''),
-        file: item.path,
-        sha: item.sha
-      }))
-      .filter(item => !isNaN(item.id));
+      .map(item => {
+        const id = parseInt(item.name.split('-')[0], 10);
+        if (isNaN(id)) {
+          console.warn(`Invalid ID in filename: ${item.name}`);
+          return null;
+        }
+        return {
+          id,
+          slug: item.name.replace(/^\d+-/, '').replace(/\.json$/, ''),
+          file: item.path,
+          sha: item.sha
+        };
+      })
+      .filter(item => item !== null);
 
     await kv.set(cacheKey, files, { ex: 604800 });
+    console.log(`Cached ${files.length} track files`);
     return files;
   } catch (error) {
     console.error('Error fetching track files:', error.response?.data || error.message);
@@ -672,6 +688,9 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
     // Save track
     await updateGitHubFile(filePath, trackData, `Add track ${newId}: ${trackData.artist} - ${trackData.title}`);
 
+    // Force refresh track files cache
+    await getAllTrackFiles();
+
     res.redirect(`/track/${newId}/${slug}`);
   } catch (error) {
     console.error('Error uploading track:', error);
@@ -684,8 +703,12 @@ app.get('/track/:id/:permalink', async (req, res) => {
   try {
     const { id } = req.params;
     const files = await getAllTrackFiles();
+    console.log(`Track files: ${JSON.stringify(files)}`); // Debug log
     const trackItem = files.find(item => item.id === parseInt(id));
-    if (!trackItem) return res.status(404).send('Post not found');
+    if (!trackItem) {
+      console.error(`Track with ID ${id} not found in files`);
+      return res.status(404).send('Post not found');
+    }
 
     const post = await getGitHubFile(trackItem.file);
     // Increment hits
@@ -956,6 +979,9 @@ app.post('/api/post', async (req, res) => {
 
     // Save track
     await updateGitHubFile(filePath, trackData, `Add track ${newId}: ${artist} - ${title}`);
+
+    // Force refresh track files cache
+    await getAllTrackFiles();
 
     res.json({ id: newId, permalink: `/track/${newId}/${slug}` });
   } catch (error) {
