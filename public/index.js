@@ -106,10 +106,10 @@ async function deleteGitHubFile(path, sha, message) {
       sha: sha
     });
 
-    await kv.del(`github:${path}`);
+    const cacheKey = `github:${path}`;
+    await kv.del(cacheKey);
     await kv.del('github:track_files');
-    await kv.del(`hits:${path}`);
-    await kv.del(`sync:${path}`);
+    // Removed hits and sync cache deletion as hits are disabled
     return response.data.commit.sha;
   } catch (error) {
     console.error(`Error deleting GitHub file ${path}:`, error.response?.data || error.message);
@@ -176,37 +176,6 @@ async function getLatestId() {
   }
 }
 
-// Helper function to increment hits
-async function incrementHits(filePath, currentHits) {
-  const hitsKey = `hits:${filePath}`;
-  const syncKey = `sync:${filePath}`;
-  let newHits = (await kv.get(hitsKey)) || currentHits || 0;
-  newHits += 1;
-
-  await kv.set(hitsKey, newHits, { ex: 3600 });
-
-  // Sync to GitHub every 100 hits or after 1 hour
-  const lastSync = await kv.get(syncKey);
-  const now = Date.now();
-  const oneHour = 3600 * 1000;
-  if ((newHits % 100 === 0) || (lastSync && now - lastSync > oneHour) || !lastSync) {
-    try {
-      const track = await getGitHubFile(filePath);
-      const files = await getAllTrackFiles();
-      const trackItem = files.find(item => item.file === filePath);
-      if (!trackItem) throw new Error(`Track file ${filePath} not found`);
-
-      track.hits = newHits;
-      await updateGitHubFile(filePath, track, `Sync hits for track ${track.id}`, trackItem.sha);
-      await kv.set(syncKey, now, { ex: 7200 });
-    } catch (error) {
-      console.error(`Failed to sync hits for ${filePath}:`, error.message);
-    }
-  }
-
-  return newHits;
-}
-
 // Helper function to generate permalink
 const generatePermalink = (artist, title) => {
   if (!artist || !title) return 'default-permalink';
@@ -231,7 +200,7 @@ const getMetaHeader = (post = null, pageUrl = 'https://wallkpop.vercel.app/') =>
   const title = isTrackPage ? `Download ${post.title} MP3 by ${post.artist} | Free Kpop Music` : 'Wallkpop | Download Latest K-Pop Music MP3';
   const description = isTrackPage
     ? `Download ${post.title} by ${post.artist} in MP3 format. Get the latest K-pop songs for free, only for promotional use. Support your favorite artist by buying the original track.`
-    : 'We are K-Pop lovers who spread the love for k-music. The site does not store any files on its server. All contents are for promotion only. Please support the artists by purchasing their CDs.';
+    : 'Wedoing are K-Pop lovers who spread the love for k-music. The site does not store any files on its server. All contents are for promotion only. Please support the artists by purchasing their CDs.';
   const keywords = isTrackPage
     ? `download kpop mp3, ${post.artist}, ${post.title} mp3, free kpop song, kpop download, ${post.title} download, korean pop music`
     : 'KPop, Download KPop, KPop Music, KPop Songs, JPop, Download JPop, JPop Music, JPop Songs, CPop, Download CPop, CPop Music, CPop Songs, Ost KDrama, Lagu Soundtrack KDrama, Lagu Drama Korea, Lagu KPop Terbaru, Tangga Lagu KPop, Download K-Pop Latest Mp3';
@@ -392,7 +361,7 @@ const parseBlogTags = (template, posts, options = {}) => {
       .replace(/%var-url128%/g, post.url128 || post.link || '#')
       .replace(/%var-url192%/g, post.url192 || post.link || '#')
       .replace(/%var-url320%/g, post.url320 || post.link || '#')
-      .replace(/%hits%/g, post.hits || 0)
+      .replace(/%hits%/g, '') // Disabled hits display
       .replace(/%var-lyricstimestamp%/g, post.lyricstimestamp || '')
       .replace(/%var-lyrics%/g, post.lyrics || '')
       .replace(/%var-name%/g, post.name || `${post.artist} - ${post.title}`)
@@ -415,8 +384,7 @@ app.get('/', async (req, res) => {
     for (const item of files.slice(0, 10)) {
       try {
         const post = await getGitHubFile(item.file);
-        const hits = await kv.get(`hits:${item.file}`) || post.hits || 0;
-        posts.push({ ...post, id: item.id, hits });
+        posts.push({ ...post, id: item.id });
       } catch (error) {
         console.error(`Skipping file ${item.file} due to error: ${error.message}`);
         continue;
@@ -431,9 +399,6 @@ app.get('/', async (req, res) => {
               <td class="kpops-list-thumb" align="center">
                 <div style="position: relative; display: inline-block; width: 60px; height: 55px;">
                   <img class="thumb" src="%var-thumb%" alt="%var-artist% - %var-title%.mp3" width="60px" height="55px" style="display: block;">
-                  <span style="position: absolute; bottom: -4px; right: -4px; font-size: 8px; color: #ffffff; background: rgba(0, 0, 0, 0.4); padding: 1px 3px; border-radius: 1px; line-height: 1.2; max-width: 89%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                    <i class="fa fa-eye" aria-hidden="true"></i> %hits%
-                  </span>
                 </div>
               </td>
               <td align="left">
@@ -588,13 +553,14 @@ app.get('/panel', async (req, res) => {
                 const response = await fetch('/panel/delete', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ file, sha })
+                  body: JSON.stringify({ file: file, sha: sha })
                 });
+                const result = await response.json();
                 if (response.ok) {
                   alert('Track deleted successfully');
                   location.reload();
                 } else {
-                  alert('Error deleting track');
+                  alert('Error deleting track: ' + result.error);
                 }
               } catch (error) {
                 alert('Error deleting track: ' + error.message);
@@ -777,12 +743,16 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
           }
           await fs.unlink(req.file.path);
           return res.json({ message: 'Tracks uploaded successfully', results });
+        } else {
+          trackData = [trackData]; // Convert single object to array for consistent processing
+          const result = await processTrack(trackData[0]);
+          await fs.unlink(req.file.path);
+          return res.json({ message: 'Track uploaded successfully', results: [result] });
         }
       } catch (parseError) {
         await fs.unlink(req.file.path);
         return res.status(400).send('Invalid JSON file');
       }
-      await fs.unlink(req.file.path); // Clean up temporary file
     } else {
       // Handle manual form input
       const {
@@ -824,7 +794,7 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
         return res.status(400).send('Invalid year value');
       }
 
-      trackData = {
+      trackData = [{
         artist,
         title,
         year: yearNum,
@@ -852,11 +822,15 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
         id: id ? parseInt(id) : null,
         file,
         sha
-      };
+      }];
     }
 
-    const result = await processTrack(trackData);
-    res.redirect(result.permalink);
+    const results = [];
+    for (const track of trackData) {
+      const result = await processTrack(track);
+      results.push(result);
+    }
+    res.redirect(results[0].permalink);
   } catch (error) {
     console.error('Error uploading track:', error);
     res.status(500).send(`Error saving post: ${error.message}`);
@@ -914,7 +888,6 @@ async function processTrack(trackData) {
     url128: trackData.url128 || null,
     url192: trackData.url192 || null,
     url320: trackData.url320 || null,
-    hits: trackData.hits || 0,
     lyricstimestamp: trackData.lyricstimestamp || null,
     lyrics: trackData.lyrics || null,
     name: trackData.name || `${trackData.artist} - ${trackData.title}`,
@@ -941,11 +914,18 @@ app.post('/panel/delete', async (req, res) => {
       return res.status(400).json({ error: 'Missing file or sha' });
     }
 
+    // Verify file exists before attempting deletion
+    try {
+      await getGitHubFile(file);
+    } catch (error) {
+      return res.status(404).json({ error: `Track file ${file} not found` });
+    }
+
     await deleteGitHubFile(file, sha, `Delete track: ${file}`);
     res.json({ message: 'Track deleted successfully' });
   } catch (error) {
     console.error('Error deleting track:', error);
-    res.status(500).json({ error: `Error deleting track: ${error.message}` });
+    res.status(500).json({ error: `Error deleting track: ${error.response?.data?.message || error.message}` });
   }
 });
 
@@ -955,8 +935,6 @@ app.post('/panel/reset-cache', async (req, res) => {
     const files = await getAllTrackFiles();
     for (const file of files) {
       await kv.del(`github:${file.file}`);
-      await kv.del(`hits:${file.file}`);
-      await kv.del(`sync:${file.file}`);
     }
     await kv.del('github:track_files');
     res.json({ message: 'Cache cleared successfully' });
@@ -978,8 +956,6 @@ app.get('/track/:id/:permalink', async (req, res) => {
     }
 
     const post = await getGitHubFile(trackItem.file);
-    // Increment hits in cache
-    const hits = await incrementHits(trackItem.file, post.hits);
 
     // Fetch related posts (same artist)
     const related = (await Promise.all(
@@ -988,8 +964,7 @@ app.get('/track/:id/:permalink', async (req, res) => {
         .map(async (item) => {
           try {
             const track = await getGitHubFile(item.file);
-            const relatedHits = await kv.get(`hits:${item.file}`) || track.hits || 0;
-            return { id: item.id, artist: track.artist, title: track.title, hits: relatedHits };
+            return { id: item.id, artist: track.artist, title: track.title };
           } catch (error) {
             console.error(`Skipping related file ${item.file}: ${error.message}`);
             return null;
@@ -1029,7 +1004,6 @@ app.get('/track/:id/:permalink', async (req, res) => {
                 <tr><td>Category</td><td>:</td><td>%var-category%</td></tr>
                 <tr><td>Duration</td><td>:</td><td>%var-duration% minutes</td></tr>
                 <tr><td>Bitrate</td><td>:</td><td>128, 192, 320 Kbps</td></tr>
-                <tr><td>View</td><td>:</td><td>%hits%</td></tr>
               </tbody>
             </table>
           </div>
@@ -1089,13 +1063,13 @@ app.get('/track/:id/:permalink', async (req, res) => {
            %var-lyrics%
           </div>
         </div>
-      </div>`, [{ ...post, hits }], { noMessage: 'No Post' });
+      </div>`, [post], { noMessage: 'No Post' });
 
     const html = `
       <!DOCTYPE html>
       <html>
       <head>
-        ${getMetaHeader({ ...post, hits }, `https://wallkpop.vercel.app/track/${id}/${req.params.permalink}`)}
+        ${getMetaHeader(post, `https://wallkpop.vercel.app/track/${id}/${req.params.permalink}`)}
       </head>
       <body>
         ${getHeader()}
@@ -1126,14 +1100,13 @@ app.get('/search/:query', async (req, res) => {
     for (const item of files) {
       try {
         const track = await getGitHubFile(item.file);
-        const hits = await kv.get(`hits:${item.file}`) || track.hits || 0;
         if (
           track.artist.toLowerCase().includes(query) ||
           track.title.toLowerCase().includes(query) ||
           track.year.toString().includes(query) ||
           track.category.toLowerCase().includes(query)
         ) {
-          posts.push({ ...track, id: item.id, hits });
+          posts.push({ ...track, id: item.id });
         }
       } catch (error) {
         console.error(`Skipping search file ${item.file}: ${error.message}`);
@@ -1150,9 +1123,6 @@ app.get('/search/:query', async (req, res) => {
               <td class="kpops-list-thumb" align="center">
                 <div style="position: relative; display: inline-block; width: 60px; height: 55px;">
                   <img class="thumb" src="%var-thumb%" alt="%var-artist% - %var-title%.mp3" width="60px" height="55px" style="display: block;">
-                  <span style="position: absolute; bottom: -4px; right: -4px; font-size: 8px; color: #ffffff; background: rgba(0, 0, 0, 0.4); padding: 1px 3px; border-radius: 1px; line-height: 1.2; max-width: 89%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                    <i class="fa fa-eye" aria-hidden="true"></i> %hits%
-                  </span>
                 </div>
               </td>
               <td align="left">
@@ -1253,7 +1223,6 @@ app.post('/api/post', async (req, res) => {
       url128: url128 || null,
       url192: url192 || null,
       url320: url320 || null,
-      hits: 0,
       lyricstimestamp: lyricstimestamp || null,
       lyrics: lyrics || null,
       name: name || `${artist} - ${title}`,
