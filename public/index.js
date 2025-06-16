@@ -12,8 +12,12 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static('public'));
 
-// Log GITHUB_TOKEN for debugging
-console.log('GITHUB_TOKEN:', process.env.GITHUB_TOKEN ? 'Set (first 4 chars: ' + process.env.GITHUB_TOKEN.slice(0, 4) + ')' : 'Not set');
+// GitHub API setup
+const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
+const repoOwner = 'wallkpop';
+const repoName = 'database';
+const branch = 'main';
+const GOOGLE_DRIVE_API_KEY = 'AIzaSyD00uLzmHdXXCQzlA2ibiYg2bzdbl89JOM';
 
 // Configure multer for file uploads
 const upload = multer({
@@ -28,21 +32,12 @@ const upload = multer({
   }
 });
 
-// GitHub API setup
-const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
-const repoOwner = 'wallkpop';
-const repoName = 'database';
-const branch = 'main';
-
 // Helper function to get file from GitHub
 async function getGitHubFile(path) {
   try {
     const cacheKey = `github:${path}`;
     const cached = await kv.get(cacheKey);
-    if (cached) {
-      console.log(`Returning cached file for ${path}`);
-      return cached;
-    }
+    if (cached) return cached;
 
     const response = await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', {
       owner: repoOwner,
@@ -52,13 +47,11 @@ async function getGitHubFile(path) {
     });
 
     if (!response.data.content) {
-      console.error(`No content found for ${path}`);
       throw new Error(`No content found for ${path}`);
     }
 
     const content = Buffer.from(response.data.content, 'base64').toString('utf-8');
     if (!content.trim()) {
-      console.error(`Empty content for ${path}`);
       throw new Error(`Empty content for ${path}`);
     }
 
@@ -70,8 +63,7 @@ async function getGitHubFile(path) {
       throw new Error(`Invalid JSON in ${path}: ${parseError.message}`);
     }
 
-    await kv.set(cacheKey, data, { ex: 604800 });
-    console.log(`Cached file for ${path}`);
+    await kv.set(cacheKey, data, { ex: 3600 });
     return data;
   } catch (error) {
     console.error(`Error fetching GitHub file ${path}:`, error.message);
@@ -93,12 +85,8 @@ async function updateGitHubFile(path, content, message, sha = null) {
     });
 
     const cacheKey = `github:${path}`;
-    await kv.set(cacheKey, content, { ex: 604800 });
-
-    // Invalidate track files cache
+    await kv.set(cacheKey, content, { ex: 3600 });
     await kv.del('github:track_files');
-    console.log(`Invalidated cache for github:track_files after updating ${path}`);
-
     return response.data.commit.sha;
   } catch (error) {
     console.error(`Error updating GitHub file ${path}:`, error.response?.data || error.message);
@@ -111,10 +99,7 @@ async function getAllTrackFiles() {
   try {
     const cacheKey = 'github:track_files';
     const cached = await kv.get(cacheKey);
-    if (cached) {
-      console.log('Returning cached track files');
-      return cached;
-    }
+    if (cached) return cached;
 
     const response = await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', {
       owner: repoOwner,
@@ -145,8 +130,7 @@ async function getAllTrackFiles() {
       });
     }
 
-    await kv.set(cacheKey, files, { ex: 604800 });
-    console.log(`Cached ${files.length} track files`);
+    await kv.set(cacheKey, files, { ex: 3600 });
     return files;
   } catch (error) {
     console.error('Error fetching track files:', error.response?.data || error.message);
@@ -162,12 +146,42 @@ async function getLatestId() {
     if (!files || files.length === 0) return 0;
     const ids = files.map(item => item.id);
     const maxId = Math.max(...ids);
-    console.log(`Latest ID: ${maxId}, IDs found: ${ids.join(', ')}`);
     return maxId;
   } catch (error) {
     console.error('Error getting latest ID:', error.message);
     return 0;
   }
+}
+
+// Helper function to increment hits
+async function incrementHits(filePath, currentHits) {
+  const hitsKey = `hits:${filePath}`;
+  const syncKey = `sync:${filePath}`;
+  let newHits = (await kv.get(hitsKey)) || currentHits || 0;
+  newHits += 1;
+
+  await kv.set(hitsKey, newHits, { ex: 3600 });
+
+  // Sync to GitHub every 100 hits or after 1 hour
+  const lastSync = await kv.get(syncKey);
+  const now = Date.now();
+  const oneHour = 3600 * 1000;
+  if ((newHits % 100 === 0) || (lastSync && now - lastSync > oneHour) || !lastSync) {
+    try {
+      const track = await getGitHubFile(filePath);
+      const files = await getAllTrackFiles();
+      const trackItem = files.find(item => item.file === filePath);
+      if (!trackItem) throw new Error(`Track file ${filePath} not found`);
+
+      track.hits = newHits;
+      await updateGitHubFile(filePath, track, `Sync hits for track ${track.id}`, trackItem.sha);
+      await kv.set(syncKey, now, { ex: 7200 });
+    } catch (error) {
+      console.error(`Failed to sync hits for ${filePath}:`, error.message);
+    }
+  }
+
+  return newHits;
 }
 
 // Helper function to generate permalink
@@ -315,7 +329,7 @@ const getFooter = (pageUrl) => `
   </footer>
 `;
 
-// Parse [blog] tags
+// Parse [blog] tags with Google Drive link transformation
 const parseBlogTags = (template, posts, options = {}) => {
   const { limit = 10, noMessage = '<center>No File</center>', to = ':url-1(:to-file:):' } = options;
   if (!posts || posts.length === 0) return noMessage;
@@ -324,6 +338,15 @@ const parseBlogTags = (template, posts, options = {}) => {
   posts.slice(0, limit).forEach((post, index) => {
     let item = template;
     const permalink = generatePermalink(post.artist, post.title);
+
+    // Transform Google Drive link for %var-link2%
+    let link2 = post.link2 || '#';
+    const driveRegex = /https:\/\/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)\/view/;
+    const match = link2.match(driveRegex);
+    if (match && match[1]) {
+      link2 = `https://www.googleapis.com/drive/v3/files/${match[1]}?alt=media&key=${GOOGLE_DRIVE_API_KEY}`;
+    }
+
     item = item.replace(/%id%/g, post.id)
       .replace(/%var-artist%/g, post.artist)
       .replace(/%var-title%/g, post.title)
@@ -341,7 +364,7 @@ const parseBlogTags = (template, posts, options = {}) => {
       .replace(/%var-bitrate320%/g, post.bitrate320 || '320')
       .replace(/%var-thumb%/g, post.thumb || 'https://via.placeholder.com/150')
       .replace(/%var-link%/g, post.link || '#')
-      .replace(/%var-link2%/g, post.link2 || '#')
+      .replace(/%var-link2%/g, link2)
       .replace(/%var-url128%/g, post.url128 || post.link || '#')
       .replace(/%var-url192%/g, post.url192 || post.link || '#')
       .replace(/%var-url320%/g, post.url320 || post.link || '#')
@@ -368,7 +391,8 @@ app.get('/', async (req, res) => {
     for (const item of files.slice(0, 10)) {
       try {
         const post = await getGitHubFile(item.file);
-        posts.push({ ...post, id: item.id });
+        const hits = await kv.get(`hits:${item.file}`) || post.hits || 0;
+        posts.push({ ...post, id: item.id, hits });
       } catch (error) {
         console.error(`Skipping file ${item.file} due to error: ${error.message}`);
         continue;
@@ -606,7 +630,12 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
     if (req.file) {
       // Handle JSON file upload
       const fileContent = await fs.readFile(req.file.path, 'utf-8');
-      trackData = JSON.parse(fileContent);
+      try {
+        trackData = JSON.parse(fileContent);
+      } catch (parseError) {
+        await fs.unlink(req.file.path);
+        return res.status(400).send('Invalid JSON file');
+      }
       await fs.unlink(req.file.path); // Clean up temporary file
     } else {
       // Handle manual form input
@@ -740,7 +769,6 @@ app.get('/track/:id/:permalink', async (req, res) => {
   try {
     const { id } = req.params;
     const files = await getAllTrackFiles();
-    console.log(`Track files: ${JSON.stringify(files)}`);
     const trackItem = files.find(item => item.id === parseInt(id));
     if (!trackItem) {
       console.error(`Track with ID ${id} not found in files`);
@@ -748,9 +776,8 @@ app.get('/track/:id/:permalink', async (req, res) => {
     }
 
     const post = await getGitHubFile(trackItem.file);
-    // Increment hits
-    post.hits = (post.hits || 0) + 1;
-    await updateGitHubFile(trackItem.file, post, `Increment hits for track ${id}`, trackItem.sha);
+    // Increment hits in cache
+    const hits = await incrementHits(trackItem.file, post.hits);
 
     // Fetch related posts (same artist)
     const related = (await Promise.all(
@@ -759,7 +786,8 @@ app.get('/track/:id/:permalink', async (req, res) => {
         .map(async (item) => {
           try {
             const track = await getGitHubFile(item.file);
-            return { id: item.id, artist: track.artist, title: track.title };
+            const relatedHits = await kv.get(`hits:${item.file}`) || track.hits || 0;
+            return { id: item.id, artist: track.artist, title: track.title, hits: relatedHits };
           } catch (error) {
             console.error(`Skipping related file ${item.file}: ${error.message}`);
             return null;
@@ -855,16 +883,16 @@ app.get('/track/:id/:permalink', async (req, res) => {
           </div>
           <br>
           <div class="note">
-            Download the latest song <strong>%var-artist% - %var-title%.mp3</strong> for free from trusted sources like wallkpop, ilkpop, matikiri, StafaBand, Planetlagu, and others. This content is provided for preview and promotional use only. Please support the artist by buying the original track from official platforms such as iTunes, Spotify, or Amazon. We do not host any files and are not responsible for user downloads.
+           %var-lyrics%
           </div>
         </div>
-      </div>`, [post], { noMessage: 'No Post' });
+      </div>`, [{ ...post, hits }], { noMessage: 'No Post' });
 
     const html = `
       <!DOCTYPE html>
       <html>
       <head>
-        ${getMetaHeader(post, `https://wallkpop.vercel.app/track/${id}/${req.params.permalink}`)}
+        ${getMetaHeader({ ...post, hits }, `https://wallkpop.vercel.app/track/${id}/${req.params.permalink}`)}
       </head>
       <body>
         ${getHeader()}
@@ -895,12 +923,13 @@ app.get('/search/:query', async (req, res) => {
     for (const item of files) {
       try {
         const track = await getGitHubFile(item.file);
+        const hits = await kv.get(`hits:${item.file}`) || track.hits || 0;
         if (
           track.artist.toLowerCase().includes(query) ||
           track.title.toLowerCase().includes(query) ||
           track.year.toString().includes(query)
         ) {
-          posts.push({ ...track, id: item.id });
+          posts.push({ ...track, id: item.id, hits });
         }
       } catch (error) {
         console.error(`Skipping search file ${item.file}: ${error.message}`);
