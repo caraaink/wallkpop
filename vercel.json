@@ -2,14 +2,12 @@
   "version": 2,
   "builds": [
     {
-      "src": "index.js",
+      "src": "public/index.js",
       "use": "@vercel/node"
     }
   ],
-  "rewrites": [
-    {
-      "source": "/(.*)",
-      "destination": "/index.js"
-    }
-  ]
+  "routes": [
+    { "src": "/(.*)", "dest": "public/index.js" }
+  ],
+  "buildCommand": "cd public && npm install && npm start"
 }
