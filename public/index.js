@@ -1,86 +1,84 @@
-
 const express = require('express');
-const sqlite3 = require('sqlite3').verbose();
-const path = require('path');
 const bodyParser = require('body-parser');
 const slugify = require('slugify');
-const fs = require('fs');
+const { Octokit } = require('@octokit/core');
+const { kv } = require('@vercel/kv');
 
 const app = express();
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static('public'));
 
-// Function to initialize database and create table
-function initializeDatabase() {
-  return new Promise((resolve, reject) => {
-    const dbPath = path.join('/tmp', 'posts.db');
-    // Ensure directory exists
-    const dir = path.dirname(dbPath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    // Create or open database
-    const db = new sqlite3.Database(dbPath, (err) => {
-      if (err) {
-        console.error('Database initialization error:', err);
-        return reject(err);
-      }
-      db.run(`CREATE TABLE IF NOT EXISTS posts (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        artist TEXT,
-        title TEXT,
-        year INTEGER,
-        album TEXT,
-        genre TEXT,
-        duration TEXT,
-        size TEXT,
-        size128 TEXT,
-        size192 TEXT,
-        size320 TEXT,
-        bitrate TEXT,
-        bitrate128 TEXT,
-        bitrate192 TEXT,
-        bitrate320 TEXT,
-        thumb TEXT,
-        link TEXT,
-        link2 TEXT,
-        url128 TEXT,
-        url192 TEXT,
-        url320 TEXT,
-        hits INTEGER DEFAULT 0,
-        lyricstimestamp TEXT,
-        lyrics TEXT,
-        name TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )`, (err) => {
-        if (err) {
-          console.error('Table creation error:', err);
-          return reject(err);
-        }
-        db.run('CREATE INDEX IF NOT EXISTS idx_id ON posts(id)', (err) => {
-          if (err) console.error('Index creation error:', err);
-          resolve(db);
-        });
-      });
+// GitHub API setup
+const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
+const repoOwner = 'wallkpop';
+const repoName = 'database';
+const branch = 'main';
+
+// Helper function to get file from GitHub
+async function getGitHubFile(path) {
+  try {
+    const cacheKey = `github:${path}`;
+    // Check cache first
+    const cached = await kv.get(cacheKey);
+    if (cached) return cached;
+
+    // Fetch from GitHub
+    const response = await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', {
+      owner: repoOwner,
+      repo: repoName,
+      path: path,
+      ref: branch
     });
-  });
+
+    const content = Buffer.from(response.data.content, 'base64').toString('utf-8');
+    const data = JSON.parse(content);
+
+    // Cache for 7 days (604800 seconds)
+    await kv.set(cacheKey, data, { ex: 604800 });
+    return data;
+  } catch (error) {
+    console.error(`Error fetching GitHub file ${path}:`, error);
+    throw error;
+  }
 }
 
-// Global database instance
-let db;
-
-(async () => {
+// Helper function to update file on GitHub
+async function updateGitHubFile(path, content, message, sha = null) {
   try {
-    db = await initializeDatabase();
-    console.log('Database initialized successfully');
-  } catch (err) {
-    console.error('Failed to initialize database, exiting:', err);
-    process.exit(1);
-  }
-})();
+    const response = await octokit.request('PUT /repos/{owner}/{repo}/contents/{path}', {
+      owner: repoOwner,
+      repo: repoName,
+      path: path,
+      message: message,
+      content: Buffer.from(JSON.stringify(content, null, 2)).toString('base64'),
+      branch: branch,
+      sha: sha || undefined
+    });
 
-// Helper function to generate permalink with fallback
+    // Update cache
+    const cacheKey = `github:${path}`;
+    await kv.set(cacheKey, content, { ex: 604800 });
+    return response.data.commit.sha;
+  } catch (error) {
+    console.error(`Error updating GitHub file ${path}:`, error);
+    throw error;
+  }
+}
+
+// Helper function to get latest ID from index.json
+async function getLatestId() {
+  try {
+    const index = await getGitHubFile('file/index.json');
+    if (!index || index.length === 0) return 0;
+    return Math.max(...index.map(item => item.id));
+  } catch (error) {
+    if (error.status === 404) return 0; // index.json not found
+    throw error;
+  }
+}
+
+// Helper function to generate permalink
 const generatePermalink = (artist, title) => {
   if (!artist || !title) return 'default-permalink';
   return slugify(`${artist}-${title}`, { lower: true, strict: true, remove: /[*+~.()'"!:@]/g });
@@ -233,7 +231,7 @@ const parseBlogTags = (template, posts, options = {}) => {
   let result = '';
   posts.slice(0, limit).forEach((post, index) => {
     let item = template;
-    const permalink = generatePermalink(post.artist, post.title); // Generate permalink with actual values
+    const permalink = generatePermalink(post.artist, post.title);
     item = item.replace(/%id%/g, post.id)
       .replace(/%var-artist%/g, post.artist)
       .replace(/%var-title%/g, post.title)
@@ -264,27 +262,23 @@ const parseBlogTags = (template, posts, options = {}) => {
       .replace(/%text%/g, post.year || 'Unknown')
       .replace(/:url-1\(:to-file:\):/g, `/track/${post.id}/${permalink}`)
       .replace(/:page_url:/g, `https://wallkpop.vercel.app/track/${post.id}/${permalink}`)
-      .replace(/:permalink:/g, permalink); // New replacement for href attributes
+      .replace(/:permalink:/g, permalink);
     result += item;
   });
   return result;
 };
 
-// Middleware to ensure database is ready
-app.use((req, res, next) => {
-  if (!db) {
-    return res.status(500).send('Database not initialized');
-  }
-  next();
-});
-
 // Root route to list all posts
-app.get('/', (req, res) => {
-  db.all('SELECT * FROM posts ORDER BY created_at DESC LIMIT 10', (err, posts) => {
-    if (err) {
-      console.error('Error fetching posts:', err);
-      return res.status(500).send('Error loading posts');
-    }
+app.get('/', async (req, res) => {
+  try {
+    const index = await getGitHubFile('file/index.json');
+    const posts = await Promise.all(
+      index.slice(0, 10).map(async (item) => {
+        const post = await getGitHubFile(item.file);
+        return { ...post, id: item.id };
+      })
+    );
+
     const postList = parseBlogTags(`
       <div class="album-list">
         <table>
@@ -350,214 +344,421 @@ app.get('/', (req, res) => {
       </html>
     `;
     res.send(html);
-  });
+  } catch (error) {
+    console.error('Error fetching posts:', error);
+    res.status(500).send('Error loading posts');
+  }
 });
 
 // Panel route
 app.get('/panel', (req, res) => {
-  res.sendFile(path.join(__dirname, 'panel.html'));
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <title>Upload Track | Wallkpop</title>
+      <style>
+        body { font-family: 'Lora', Arial, sans-serif; margin: 20px; }
+        .form-container { max-width: 600px; margin: 0 auto; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; }
+        .form-group input, .form-group textarea { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+        .form-group textarea { height: 100px; }
+        .submit-btn { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        .submit-btn:hover { background: #0056b3; }
+      </style>
+    </head>
+    <body>
+      <div class="form-container">
+        <h1>Upload New Track</h1>
+        <form action="/panel" method="POST">
+          <div class="form-group">
+            <label for="var-artist">Artist</label>
+            <input type="text" id="var-artist" name="var-artist" required>
+          </div>
+          <div class="form-group">
+            <label for="var-title">Title</label>
+            <input type="text" id="var-title" name="var-title" required>
+          </div>
+          <div class="form-group">
+            <label for="var-year">Year</label>
+            <input type="number" id="var-year" name="var-year" required>
+          </div>
+          <div class="form-group">
+            <label for="var-album">Album</label>
+            <input type="text" id="var-album" name="var-album">
+          </div>
+          <div class="form-group">
+            <label for="var-genre">Genre</label>
+            <input type="text" id="var-genre" name="var-genre">
+          </div>
+          <div class="form-group">
+            <label for="var-duration">Duration (e.g., 3:45)</label>
+            <input type="text" id="var-duration" name="var-duration">
+          </div>
+          <div class="form-group">
+            <label for="var-size">Size (MB)</label>
+            <input type="text" id="var-size" name="var-size">
+          </div>
+          <div class="form-group">
+            <label for="var-size128">Size 128kbps (MB)</label>
+            <input type="text" id="var-size128" name="var-size128">
+          </div>
+          <div class="form-group">
+            <label for="var-size192">Size 192kbps (MB)</label>
+            <input type="text" id="var-size192" name="var-size192">
+          </div>
+          <div class="form-group">
+            <label for="var-size320">Size 320kbps (MB)</label>
+            <input type="text" id="var-size320" name="var-size320">
+          </div>
+          <div class="form-group">
+            <label for="var-bitrate">Bitrate (kbps)</label>
+            <input type="text" id="var-bitrate" name="var-bitrate" value="192">
+          </div>
+          <div class="form-group">
+            <label for="var-bitrate128">Bitrate 128kbps</label>
+            <input type="text" id="var-bitrate128" name="var-bitrate128" value="128">
+          </div>
+          <div class="form-group">
+            <label for="var-bitrate192">Bitrate 192kbps</label>
+            <input type="text" id="var-bitrate192" name="var-bitrate192" value="192">
+          </div>
+          <div class="form-group">
+            <label for="var-bitrate320">Bitrate 320kbps</label>
+            <input type="text" id="var-bitrate320" name="var-bitrate320" value="320">
+          </div>
+          <div class="form-group">
+            <label for="var-thumb">Thumbnail URL</label>
+            <input type="text" id="var-thumb" name="var-thumb">
+          </div>
+          <div class="form-group">
+            <label for="var-link">Download Link</label>
+            <input type="text" id="var-link" name="var-link">
+          </div>
+          <div class="form-group">
+            <label for="var-link2">Alternative Download Link</label>
+            <input type="text" id="var-link2" name="var-link2">
+          </div>
+          <div class="form-group">
+            <label for="var-url128">Download URL (128kbps)</label>
+            <input type="text" id="var-url128" name="var-url128">
+          </div>
+          <div class="form-group">
+            <label for="var-url192">Download URL (192kbps)</label>
+            <input type="text" id="var-url192" name="var-url192">
+          </div>
+          <div class="form-group">
+            <label for="var-url320">Download URL (320kbps)</label>
+            <input type="text" id="var-url320" name="var-url320">
+          </div>
+          <div class="form-group">
+            <label for="var-lyricstimestamp">Lyrics Timestamp</label>
+            <textarea id="var-lyricstimestamp" name="var-lyricstimestamp"></textarea>
+          </div>
+          <div class="form-group">
+            <label for="var-lyrics">Lyrics</label>
+            <textarea id="var-lyrics" name="var-lyrics"></textarea>
+          </div>
+          <div class="form-group">
+            <label for="var-name">File Name</label>
+            <input type="text" id="var-name" name="var-name">
+          </div>
+          <button type="submit" class="submit-btn">Upload Track</button>
+        </form>
+      </div>
+    </body>
+    </html>
+  `;
+  res.send(html);
 });
 
 // Handle post submission from panel
-app.post('/panel', (req, res) => {
-  const {
-    'var-artist': artist,
-    'var-title': title,
-    'var-year': year,
-    'var-album': album,
-    'var-genre': genre,
-    'var-duration': duration,
-    'var-size': size,
-    'var-size128': size128,
-    'var-size192': size192,
-    'var-size320': size320,
-    'var-bitrate': bitrate,
-    'var-bitrate128': bitrate128,
-    'var-bitrate192': bitrate192,
-    'var-bitrate320': bitrate320,
-    'var-thumb': thumb,
-    'var-link': link,
-    'var-link2': link2,
-    'var-url128': url128,
-    'var-url192': url192,
-    'var-url320': url320,
-    'var-lyricstimestamp': lyricstimestamp,
-    'var-lyrics': lyrics,
-    'var-name': name
-  } = req.body;
+app.post('/panel', async (req, res) => {
+  try {
+    const {
+      'var-artist': artist,
+      'var-title': title,
+      'var-year': year,
+      'var-album': album,
+      'var-genre': genre,
+      'var-duration': duration,
+      'var-size': size,
+      'var-size128': size128,
+      'var-size192': size192,
+      'var-size320': size320,
+      'var-bitrate': bitrate,
+      'var-bitrate128': bitrate128,
+      'var-bitrate192': bitrate192,
+      'var-bitrate320': bitrate320,
+      'var-thumb': thumb,
+      'var-link': link,
+      'var-link2': link2,
+      'var-url128': url128,
+      'var-url192': url192,
+      'var-url320': url320,
+      'var-lyricstimestamp': lyricstimestamp,
+      'var-lyrics': lyrics,
+      'var-name': name
+    } = req.body;
 
-  // Validate required fields
-  if (!artist || !title || !year) {
-    return res.status(400).send('Missing required fields: artist, title, or year');
-  }
-  // Convert year to integer
-  const yearNum = parseInt(year, 10);
-  if (isNaN(yearNum)) {
-    return res.status(400).send('Invalid year value');
-  }
-
-  db.run(
-    `INSERT INTO posts (
-      artist, title, year, album, genre, duration, size, size128, size192, size320,
-      bitrate, bitrate128, bitrate192, bitrate320, thumb, link, link2, url128, url192, url320,
-      lyricstimestamp, lyrics, name
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      artist, title, yearNum, album, genre, duration, size, size128, size192, size320,
-      bitrate, bitrate128, bitrate192, bitrate320, thumb, link, link2, url128, url192, url320,
-      lyricstimestamp, lyrics, name
-    ],
-    function(err) {
-      if (err) {
-        console.error('Database error during post insertion:', err.message);
-        return res.status(500).send(`Error saving post: ${err.message}`);
-      }
-      const permalink = generatePermalink(artist, title);
-      res.redirect(`/track/${this.lastID}/${permalink}`);
+    // Validate required fields
+    if (!artist || !title || !year) {
+      return res.status(400).send('Missing required fields: artist, title, or year');
     }
-  );
+    const yearNum = parseInt(year, 10);
+    if (isNaN(yearNum)) {
+      return res.status(400).send('Invalid year value');
+    }
+
+    // Generate ID and slug
+    const latestId = await getLatestId();
+    const newId = latestId + 1;
+    const slug = generatePermalink(artist, title);
+    const filePath = `file/${newId}-${slug}.json`;
+
+    // Create track data
+    const trackData = {
+      id: newId,
+      artist,
+      title,
+      year: yearNum,
+      album: album || null,
+      genre: genre || null,
+      duration: duration || null,
+      size: size || null,
+      size128: size128 || null,
+      size192: size192 || null,
+      size320: size320 || null,
+      bitrate: bitrate || '192',
+      bitrate128: bitrate128 || '128',
+      bitrate192: bitrate192 || '192',
+      bitrate320: bitrate320 || '320',
+      thumb: thumb || null,
+      link: link || null,
+      link2: link2 || null,
+      url128: url128 || null,
+      url192: url192 || null,
+      url320: url320 || null,
+      hits: 0,
+      lyricstimestamp: lyricstimestamp || null,
+      lyrics: lyrics || null,
+      name: name || `${artist} - ${title}`,
+      created_at: new Date().toISOString()
+    };
+
+    // Update index.json
+    let index;
+    try {
+      index = await getGitHubFile('file/index.json');
+    } catch (error) {
+      if (error.status === 404) {
+        index = [];
+      } else {
+        throw error;
+      }
+    }
+    index.push({ id: newId, slug, file: filePath });
+
+    // Get SHA for index.json
+    let indexSha;
+    try {
+      const indexResponse = await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', {
+        owner: repoOwner,
+        repo: repoName,
+        path: 'file/index.json',
+        ref: branch
+      });
+      indexSha = indexResponse.data.sha;
+    } catch (error) {
+      if (error.status !== 404) throw error;
+    }
+
+    // Save track and update index
+    await updateGitHubFile(filePath, trackData, `Add track ${newId}: ${artist} - ${title}`);
+    await updateGitHubFile('file/index.json', index, `Update index with track ${newId}`, indexSha);
+
+    res.redirect(`/track/${newId}/${slug}`);
+  } catch (error) {
+    console.error('Error uploading track:', error);
+    res.status(500).send(`Error saving post: ${error.message}`);
+  }
 });
 
 // Track page
-app.get('/track/:id/:permalink', (req, res) => {
-  const { id } = req.params;
-  db.get('SELECT * FROM posts WHERE id = ?', [id], { timeout: 5000 }, (err, post) => {
-    if (err) {
-      console.error('Database error:', err);
-      return res.status(500).send('Error fetching post');
-    }
-    if (!post) return res.status(404).send('Post not found');
-    db.run('UPDATE posts SET hits = hits + 1 WHERE id = ?', [id], (err) => {
-      if (err) console.error('Error updating hits:', err);
-    });
-    db.all('SELECT id, artist, title FROM posts WHERE artist = ? AND id != ? LIMIT 20', [post.artist, id], { timeout: 5000 }, (err, related) => {
-      if (err) {
-        console.error('Related posts error:', err);
-        related = [];
-      }
-      const relatedContent = parseBlogTags(`
-        <div class="lagu">
-          <a title="Download %var-artist% - %var-title% Mp3" href="/track/%id%/:permalink:">%var-artist% - %var-title%</a>
-        </div>`, related, { limit: 20, noMessage: '<center>No File</center>' });
+app.get('/track/:id/:permalink', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const index = await getGitHubFile('file/index.json');
+    const trackItem = index.find(item => item.id === parseInt(id));
+    if (!trackItem) return res.status(404).send('Post not found');
 
-      const content = parseBlogTags(`
+    const post = await getGitHubFile(trackItem.file);
+    // Increment hits
+    post.hits = (post.hits || 0) + 1;
+    const fileResponse = await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', {
+      owner: repoOwner,
+      repo: repoName,
+      path: trackItem.file,
+      ref: branch
+    });
+    await updateGitHubFile(trackItem.file, post, `Increment hits for track ${id}`, fileResponse.data.sha);
+
+    // Fetch related posts (same artist)
+    const related = index
+      .filter(item => item.id !== parseInt(id))
+      .filter(item => {
+        const track = getGitHubFile(item.file);
+        return track.artist === post.artist;
+      })
+      .slice(0, 20)
+      .map(item => ({
+        id: item.id,
+        artist: post.artist,
+        title: getGitHubFile(item.file).title
+      }));
+
+    const relatedContent = parseBlogTags(`
+      <div class="lagu">
+        <a title="Download %var-artist% - %var-title% Mp3" href="/track/%id%/:permalink:">%var-artist% - %var-title%</a>
+      </div>`, related, { limit: 20, noMessage: '<center>No File</center>' });
+
+    const content = parseBlogTags(`
+      <div id="k">
+        <div class="kpops-view">
+          <div class="post-title">
+            <div class="meta"><h1>Download %title% MP3</h1></div>
+            <div class="autor"><span><b class="user"><em>%var-artist%</em></b>, <b class="add">%date=Y-m-d%</b></span></div>
+          </div>
+          <div class="cover-foto" align="center">
+            <img class="art" src="%var-thumb%" alt="%var-title% MP3 by %var-artist%" title="%var-title% MP3 by %var-artist%" style="width: 100%; height: 80%; object-fit: cover;">
+            <div id="lyrics" class="lyrics"></div>
+          </div>
+          <div class="kpops-view-atas">
+            <p><strong>Listen and Download</strong> <b>%var-title% MP3</b> by <b>%var-artist%</b> for free at Wallkpop. This track is shared for promotional purposes only. Support the artist by purchasing the official version on music platforms like iTunes, Spotify, or Amazon Music.</p>
+          </div>
+          <div class="post-body">
+            <table width="100%">
+              <caption class="title">%var-name%.mp3</caption>
+              <tbody>
+                <tr><td width="30%">Song Title</td><td>:</td><td>%var-title%</td></tr>
+                <tr><td>Artist</td><td>:</td><td>%var-artist%</td></tr>
+                <tr><td>Album</td><td>:</td><td>%var-album%</td></tr>
+                <tr><td>Genre</td><td>:</td><td>%var-genre%</td></tr>
+                <tr><td>Duration</td><td>:</td><td>%var-duration% minutes</td></tr>
+                <tr><td>Bitrate</td><td>:</td><td>128, 192, 320 Kbps</td></tr>
+                <tr><td>View</td><td>:</td><td>%hits%</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="container">
+            <h2><center>↓↓ Download MP3 ~%var-bitrate% kb/s ↓↓</center></h2>
+          </div>
+          <audio id="player" controls>
+            <source src="%var-link2%" type="audio/mp3">
+          </audio>
+          <div style="text-align: center;">
+            <button style="background: #cf5117; color: white; font-size: 12px; padding: 2px 6px; border-radius: 3px; display: inline-block;" onclick="document.getElementById('player').src='%var-link%';">Play Audio from Wallkpop</button>
+            <button style="background: #cf5117; color: white; font-size: 12px; padding: 2px 6px; border-radius: 3px; display: inline-block;" onclick="document.getElementById('player').src='%var-link2%';">Play Audio from GDrive</button>
+          </div>
+          <div id="debug" class="debug">Loading...</div>
+          <script>const lyricsText = "%var-lyricstimestamp%";</script>
+          <script src="https://cdn.jsdelivr.net/gh/caraaink/meownime@refs/heads/main/javascript/audio-lyrics-timestamp.js"></script>
+          <div style="text-align: center;"><br>
+            <div class="download-buttons">
+              <a href="//meownime.wapkizs.com/page-convert.html?to-thumb=%var-thumb%&to-size=%var-size320%&to-link2=%var-url320%&to-artist=%var-artist%&to-title=%var-title%&to-link=%var-link%&to-sizeori=%var-size320%" target="_blank">
+                <button class="downd bitrate-320"><span class="hq-label">HQ</span><div class="title">Download Now</div><div class="size">(%var-size320%)</div><span class="bitrate">%var-bitrate320% kb/s</span></button>
+              </a>
+              <a href="//meownime.wapkizs.com/page-convert.html?to-thumb=%var-thumb%&to-size=%var-size192%&to-link2=%var-url192%&to-artist=%var-artist%&to-title=%var-title%&to-link=%var-link%&to-sizeori=%var-size192%" target="_blank">
+                <button class="downd bitrate-192"><span class="medium-label">MQ</span><div class="title">Download Now</div><div class="size">(%var-size192%)</div><span class="bitrate">%var-bitrate192% kb/s</span></button>
+              </a>
+              <a href="//meownime.wapkizs.com/page-convert.html?to-thumb=%var-thumb%&to-size=%var-size128%&to-link2=%var-url128%&to-artist=%var-artist%&to-title=%var-title%&to-link=%var-link%&to-sizeori=%var-size128%" target="_blank">
+                <button class="downd bitrate-128"><span class="low-label">LQ</span><div class="title">Download Now</div><div class="size">(%var-size128%)</div><span class="bitrate">%var-bitrate128% kb/s</span></button>
+              </a>
+            </div>
+          </div>
+          <br>
+          <div class="breadcrumb" itemscope itemtype="https://schema.org/BreadcrumbList">
+            <span itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+              <a itemtype="https://schema.org/Thing" itemprop="item" href="/">
+                <span itemprop="name">Home</span>
+              </a>
+              <meta itemprop="position" content="1">
+            </span> »
+            <span itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+              <a itemtype="https://schema.org/Thing" itemprop="item" href="/site-allmusic.html">
+                <span itemprop="name">K-Pop</span>
+              </a>
+              <meta itemprop="position" content="2">
+            </span> »
+            <span itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+              <a itemtype="https://schema.org/Thing" itemprop="item" href="/search/%var-artist%">
+                <span itemprop="name">%var-artist%</span>
+              </a>
+              <meta itemprop="position" content="3">
+            </span> »
+            <span itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+              <span itemprop="name">%var-title%</span>
+              <meta itemprop="position" content="4">
+            </span>
+          </div>
+          <br>
+          <div class="note">
+            Download the latest song <strong>%var-artist% - %var-title%.mp3</strong> for free from trusted sources like wallkpop, ilkpop, matikiri, StafaBand, Planetlagu, and others. This content is provided for preview and promotional use only. Please support the artist by buying the original track from official platforms such as iTunes, Spotify, or Amazon. We do not host any files and are not responsible for user downloads.
+          </div>
+        </div>
+      </div>`, [post], { noMessage: 'No Post' });
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        ${getMetaHeader(post, `https://wallkpop.vercel.app/track/${id}/${req.params.permalink}`)}
+      </head>
+      <body>
+        ${getHeader()}
+        ${content}
         <div id="k">
-          <div class="kpops-view">
-            <div class="post-title">
-              <div class="meta"><h1>Download %title% MP3</h1></div>
-              <div class="autor"><span><b class="user"><em>%var-artist%</em></b>, <b class="add">%date=Y-m-d%</b></span></div>
-            </div>
-            <div class="cover-foto" align="center">
-              <img class="art" src="%var-thumb%" alt="%var-title% MP3 by %var-artist%" title="%var-title% MP3 by %var-artist%" style="width: 100%; height: 80%; object-fit: cover;">
-              <div id="lyrics" class="lyrics"></div>
-            </div>
-            <div class="kpops-view-atas">
-              <p><strong>Listen and Download</strong> <b>%var-title% MP3</b> by <b>%var-artist%</b> for free at Wallkpop. This track is shared for promotional purposes only. Support the artist by purchasing the official version on music platforms like iTunes, Spotify, or Amazon Music.</p>
-            </div>
-            <div class="post-body">
-              <table width="100%">
-                <caption class="title">%var-name%.mp3</caption>
-                <tbody>
-                  <tr><td width="30%">Song Title</td><td>:</td><td>%var-title%</td></tr>
-                  <tr><td>Artist</td><td>:</td><td>%var-artist%</td></tr>
-                  <tr><td>Album</td><td>:</td><td>%var-album%</td></tr>
-                  <tr><td>Genre</td><td>:</td><td>%var-genre%</td></tr>
-                  <tr><td>Duration</td><td>:</td><td>%var-duration% minutes</td></tr>
-                  <tr><td>Bitrate</td><td>:</td><td>128, 192, 320 Kbps</td></tr>
-                  <tr><td>View</td><td>:</td><td>%hits%</td></tr>
-                </tbody>
-              </table>
-            </div>
-            <div class="container">
-              <h2><center>↓↓ Download MP3 ~%var-bitrate% kb/s ↓↓</center></h2>
-            </div>
-            <audio id="player" controls>
-              <source src="%var-link2%" type="audio/mp3">
-            </audio>
-            <div style="text-align: center;">
-              <button style="background: #cf5117; color: white; font-size: 12px; padding: 2px 6px; border-radius: 3px; display: inline-block;" onclick="document.getElementById('player').src='%var-link%';">Play Audio from Wallkpop</button>
-              <button style="background: #cf5117; color: white; font-size: 12px; padding: 2px 6px; border-radius: 3px; display: inline-block;" onclick="document.getElementById('player').src='%var-link2%';">Play Audio from GDrive</button>
-            </div>
-            <div id="debug" class="debug">Loading...</div>
-            <script>const lyricsText = "%var-lyricstimestamp%";</script>
-            <script src="https://cdn.jsdelivr.net/gh/caraaink/meownime@refs/heads/main/javascript/audio-lyrics-timestamp.js"></script>
-            <div style="text-align: center;"><br>
-              <div class="download-buttons">
-                <a href="//meownime.wapkizs.com/page-convert.html?to-thumb=%var-thumb%&to-size=%var-size320%&to-link2=%var-url320%&to-artist=%var-artist%&to-title=%var-title%&to-link=%var-link%&to-sizeori=%var-size320%" target="_blank">
-                  <button class="downd bitrate-320"><span class="hq-label">HQ</span><div class="title">Download Now</div><div class="size">(%var-size320%)</div><span class="bitrate">%var-bitrate320% kb/s</span></button>
-                </a>
-                <a href="//meownime.wapkizs.com/page-convert.html?to-thumb=%var-thumb%&to-size=%var-size192%&to-link2=%var-url192%&to-artist=%var-artist%&to-title=%var-title%&to-link=%var-link%&to-sizeori=%var-size192%" target="_blank">
-                  <button class="downd bitrate-192"><span class="medium-label">MQ</span><div class="title">Download Now</div><div class="size">(%var-size192%)</div><span class="bitrate">%var-bitrate192% kb/s</span></button>
-                </a>
-                <a href="//meownime.wapkizs.com/page-convert.html?to-thumb=%var-thumb%&to-size=%var-size128%&to-link2=%var-url128%&to-artist=%var-artist%&to-title=%var-title%&to-link=%var-link%&to-sizeori=%var-size128%" target="_blank">
-                  <button class="downd bitrate-128"><span class="low-label">LQ</span><div class="title">Download Now</div><div class="size">(%var-size128%)</div><span class="bitrate">%var-bitrate128% kb/s</span></button>
-                </a>
-              </div>
-            </div>
-            <br>
-            <div class="breadcrumb" itemscope itemtype="https://schema.org/BreadcrumbList">
-              <span itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
-                <a itemtype="https://schema.org/Thing" itemprop="item" href="/">
-                  <span itemprop="name">Home</span>
-                </a>
-                <meta itemprop="position" content="1">
-              </span> »
-              <span itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
-                <a itemtype="https://schema.org/Thing" itemprop="item" href="/site-allmusic.html">
-                  <span itemprop="name">K-Pop</span>
-                </a>
-                <meta itemprop="position" content="2">
-              </span> »
-              <span itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
-                <a itemtype="https://schema.org/Thing" itemprop="item" href="/search/%var-artist%">
-                  <span itemprop="name">%var-artist%</span>
-                </a>
-                <meta itemprop="position" content="3">
-              </span> »
-              <span itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
-                <span itemprop="name">%var-title%</span>
-                <meta itemprop="position" content="4">
-              </span>
-            </div>
-            <br>
-            <div class="note">
-              Download the latest song <strong>%var-artist% - %var-title%.mp3</strong> for free from trusted sources like wallkpop, ilkpop, matikiri, StafaBand, Planetlagu, and others. This content is provided for preview and promotional use only. Please support the artist by buying the original track from official platforms such as iTunes, Spotify, or Amazon. We do not host any files and are not responsible for user downloads.
-            </div>
+          <h3 class="title">Related Update : <a href="/">More</a></h3>
+          <div class="list">
+            ${relatedContent}
           </div>
-        </div>`, [post], { noMessage: 'No Post' });
-
-      const html = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          ${getMetaHeader(post, `https://wallkpop.vercel.app/track/${id}/${req.params.permalink}`)}
-        </head>
-        <body>
-          ${getHeader()}
-          ${content}
-          <div id="k">
-            <h3 class="title">Related Update : <a href="/">More</a></h3>
-            <div class="list">
-              ${relatedContent}
-            </div>
-          </div>
-          ${getFooter(`https://wallkpop.vercel.app/track/${id}/${req.params.permalink}`)}
-        </body>
-        </html>
-      `;
-      res.send(html);
-    });
-  });
+        </div>
+        ${getFooter(`https://wallkpop.vercel.app/track/${id}/${req.params.permalink}`)}
+      </body>
+      </html>
+    `;
+    res.send(html);
+  } catch (error) {
+    console.error('Error fetching track:', error);
+    res.status(500).send('Error fetching post');
+  }
 });
 
 // Search page
-app.get('/search/:query', (req, res) => {
-  const query = `%${req.params.query}%`;
-  db.all('SELECT * FROM posts WHERE artist LIKE ? OR title LIKE ? OR year LIKE ?', [query, query, query], { timeout: 5000 }, (err, posts) => {
-    if (err) {
-      console.error('Search error:', err);
-      return res.status(500).send('Error searching');
-    }
+app.get('/search/:query', async (req, res) => {
+  try {
+    const query = req.params.query.toLowerCase();
+    const index = await getGitHubFile('file/index.json');
+    const posts = await Promise.all(
+      index
+        .filter(async (item) => {
+          const track = await getGitHubFile(item.file);
+          return (
+            track.artist.toLowerCase().includes(query) ||
+            track.title.toLowerCase().includes(query) ||
+            track.year.toString().includes(query)
+          );
+        })
+        .slice(0, 40)
+        .map(async (item) => {
+          const post = await getGitHubFile(item.file);
+          return { ...post, id: item.id };
+        })
+    );
+
     const searchResults = parseBlogTags(`
       <div class="album-list">
         <table>
@@ -610,47 +811,102 @@ app.get('/search/:query', (req, res) => {
       </html>
     `;
     res.send(html);
-  });
+  } catch (error) {
+    console.error('Search error:', error);
+    res.status(500).send('Error searching');
+  }
 });
 
 // API for posting
-app.post('/api/post', (req, res) => {
-  const {
-    artist, title, year, album, genre, duration, size, size128, size192, size320,
-    bitrate, bitrate128, bitrate192, bitrate320, thumb, link, link2, url128, url192, url320,
-    lyricstimestamp, lyrics, name
-  } = req.body;
-
-  // Validate required fields
-  if (!artist || !title || !year) {
-    return res.status(400).json({ error: 'Missing required fields: artist, title, or year' });
-  }
-  // Convert year to integer
-  const yearNum = parseInt(year, 10);
-  if (isNaN(yearNum)) {
-    return res.status(400).json({ error: 'Invalid year value' });
-  }
-
-  db.run(
-    `INSERT INTO posts (
+app.post('/api/post', async (req, res) => {
+  try {
+    const {
       artist, title, year, album, genre, duration, size, size128, size192, size320,
       bitrate, bitrate128, bitrate192, bitrate320, thumb, link, link2, url128, url192, url320,
       lyricstimestamp, lyrics, name
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      artist, title, yearNum, album, genre, duration, size, size128, size192, size320,
-      bitrate, bitrate128, bitrate192, bitrate320, thumb, link, link2, url128, url192, url320,
-      lyricstimestamp, lyrics, name
-    ],
-    function(err) {
-      if (err) {
-        console.error('Database error during API post insertion:', err.message);
-        return res.status(500).json({ error: `Error saving post: ${err.message}` });
-      }
-      const permalink = generatePermalink(artist, title);
-      res.json({ id: this.lastID, permalink: `/track/${this.lastID}/${permalink}` });
+    } = req.body;
+
+    // Validate required fields
+    if (!artist || !title || !year) {
+      return res.status(400).json({ error: 'Missing required fields: artist, title, or year' });
     }
-  );
+    const yearNum = parseInt(year, 10);
+    if (isNaN(yearNum)) {
+      return res.status(400).json({ error: 'Invalid year value' });
+    }
+
+    // Generate ID and slug
+    const latestId = await getLatestId();
+    const newId = latestId + 1;
+    const slug = generatePermalink(artist, title);
+    const filePath = `file/${newId}-${slug}.json`;
+
+    // Create track data
+    const trackData = {
+      id: newId,
+      artist,
+      title,
+      year: yearNum,
+      album: album || null,
+      genre: genre || null,
+      duration: duration || null,
+      size: size || null,
+      size128: size128 || null,
+      size192: size192 || null,
+      size320: size320 || null,
+      bitrate: bitrate || '192',
+      bitrate128: bitrate128 || '128',
+      bitrate192: bitrate192 || '192',
+      bitrate320: bitrate320 || '320',
+      thumb: thumb || null,
+      link: link || null,
+      link2: link2 || null,
+      url128: url128 || null,
+      url192: url192 || null,
+      url320: url320 || null,
+      hits: 0,
+      lyricstimestamp: lyricstimestamp || null,
+      lyrics: lyrics || null,
+      name: name || `${artist} - ${title}`,
+      created_at: new Date().toISOString()
+    };
+
+    // Update index.json
+    let index;
+    try {
+      index = await getGitHubFile('file/index.json');
+    } catch (error) {
+      if (error.status === 404) {
+        index = [];
+      } else {
+        throw error;
+      }
+    }
+    index.push({ id: newId, slug, file: filePath });
+
+    // Get SHA for index.json
+    let indexSha;
+    try {
+      const indexResponse = await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', {
+        owner: repoOwner,
+        repo: repoName,
+        path: 'file/index.json',
+        ref: branch
+      });
+      indexSha = indexResponse.data.sha;
+    } catch (error) {
+      if (error.status !== 404) throw error;
+    }
+
+    // Save track and update index
+    await updateGitHubFile(filePath, trackData, `Add track ${newId}: ${artist} - ${title}`);
+    await updateGitHubFile('file/index.json', index, `Update index with track ${newId}`, indexSha);
+
+    res.json({ id: newId, permalink: `/track/${newId}/${slug}` });
+  } catch (error) {
+    console.error('Error uploading track:', error);
+    res.status(500).json({ error: `Error saving post: ${error.message}` });
+  }
 });
 
 module.exports = app;
