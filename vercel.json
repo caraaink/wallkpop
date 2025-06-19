@@ -2,12 +2,14 @@
   "version": 2,
   "builds": [
     {
-      "src": "public/index.js",
+      "src": "index.js",
       "use": "@vercel/node"
     }
   ],
   "routes": [
-    { "src": "/(.*)", "dest": "public/index.js" }
-  ],
-  "buildCommand": "cd public && npm install && npm start"
+    {
+      "src": "/(.*)",
+      "dest": "index.js"
+    }
+  ]
 }
