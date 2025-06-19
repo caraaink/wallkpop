@@ -234,12 +234,13 @@ const getMetaHeader = (post = null, pageUrl = 'https://wallkpop.vercel.app/', qu
     <meta name="keywords" content="${keywords}">
     <meta name="author" content="Wallkpop">
     <meta name="robots" content="index, follow">
+    <link rel="shortcut icon" type="image/x-icon" href="https://3.bp.blogspot.com/-lMlVM2JcX2I/XIEj2qoWVUI/AAAAAAAACCA/CrQSkBvttVMnVKzTRtyO-GB9X3sSJIt5QCLcBGAs/s1600/favicon.ico">
     <link rel="canonical" href="${pageUrl}">
     <link rel="stylesheet" href="https://rawcdn.githack.com/caraaink/otakudesu/1ff200e0bc05d43443b4944b46532c4b4c3cc275/plyr.css" />
     <script src="https://rawcdn.githack.com/caraaink/otakudesu/1ff200e0bc05d43443b4944b46532c4b4c3cc275/plyr.polyfilled.js"></script>
     <link href="https://stackpath.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet" integrity="sha384-wvfXpqpZZVQGK6TAh5PVlGOfQNHSoD2xbE+QkPxCAFlNEevoEH3Sl0sibVcOQVnN" crossorigin="anonymous">
     <link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" type="text/css" href="https://rawcdn.githack.com/caraaink/wallkpop/e24482dd4db4eb4b4645ed2538a36b33257e4d82/public/style.css"/>
+    <link rel="stylesheet" type="text/css" href="/style.css"/>
     <meta name="google-site-verification" content="9e9RaAsVDPAkag708Q30S8xSw8_qIMm87FJBoJWzink" />
     <meta name="yandex-verification" content="b507670596647101" />
     ${og}
@@ -254,9 +255,9 @@ const getHeader = (searchQuery = '') => `
       <nav>
         <ul>
           <li><a href="/">Home</a></li>
-          <li><a href="https://metrolagu.wapkiz.mobi/">K-Pop</a></li>
-          <li><a href="/search?q=ost">OST</a></li>
-          <li><a href="https://meownime.wapkizs.com/">Anime</a></li>
+          <li><a href="/search?q=Dance">Dance</a></li>
+          <li><a href="/search?q=Ballad">Ballad</a></li>
+          <li><a href="/search?q=Soundtrack">Soundtrack</a></li>
         </ul>
       </nav>
       <div id="search">
@@ -276,7 +277,7 @@ const getFooter = (pageUrl) => `
         <p>We are <i>K-Pop lovers</i> who spread the love for k-music. The site does not store any files on its server. All contents are for promotion only. Please support the artists by purchasing their CDs.</p>
       </div>
       <div class="center">
-        <a href="https://www.facebook.com/wallkpop.official" title="Follow Facebook" style="background:#1877F2;color:#fff;padding:3px 8px;margin:1px;border:1px solid #ddd;font-weight:bold;border-radius:4px;display:inline-block;" target="_blank">Facebook</a>
+        <a href="https://www.facebook.com/wallkpop_official" title="Follow Facebook" style="background:#1877F2;color:#fff;padding:3px 8px;margin:1px;border:1px solid #ddd;font-weight:bold;border-radius:4px;display:inline-block;" target="_blank">Facebook</a>
         <a href="https://www.instagram.com/wallkpop.official" title="Follow Instagram" style="background:linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888);color:#ffffff;padding:3px 8px;margin:1px;font-weight:bold;border:1px solid #ddd;border-radius:4px;display:inline-block;" target="_blank">Instagram</a>
         <a href="https://x.com/wallkpop_mp3" title="Follow X" style="background:#000000;color:#ffffff;padding:3px 8px;margin:1px;font-weight:bold;border:1px solid #ddd;border-radius:4px;display:inline-block;" target="_blank">X</a>
         <a href="whatsapp://send?text=Wallkpop | Download Latest K-Pop Music MP3%0a%20${pageUrl}" title="Bagikan ke WhatsApp" style="background:#019C00;color:#ffffff;padding:3px 8px;margin:1px;font-weight:bold;border:1px solid #ddd;border-radius:4px;display:inline-block;">WA</a>
@@ -599,6 +600,75 @@ app.get('/page/:page', async (req, res) => {
     console.error('Error fetching posts:', error);
     res.status(500).send('Error loading posts');
   }
+});
+
+app.get('/sitemap.xml', async (req, res) => {
+  try {
+    const files = await getAllTrackFiles();
+    const postsPerPage = 40;
+    const totalPosts = files.length;
+    const totalPages = Math.ceil(totalPosts / postsPerPage);
+    
+    let sitemap = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://wallkpop.vercel.app/</loc>
+    <lastmod>${getFormattedDate('Y-m-d')}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>`;
+
+    // Add track pages
+    for (const item of files) {
+      try {
+        const post = await getGitHubFile(item.file);
+        const permalink = generatePermalink(post.artist, post.title);
+        sitemap += `
+  <url>
+    <loc>https://wallkpop.vercel.app/track/${item.id}/${permalink}</loc>
+    <lastmod>${post.created_at ? new Date(post.created_at).toISOString().split('T')[0] : getFormattedDate('Y-m-d')}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>`;
+      } catch (error) {
+        console.error(`Skipping sitemap file ${item.file}: ${error.message}`);
+        continue;
+      }
+    }
+
+    // Add pagination pages
+    for (let page = 1; page <= totalPages; page++) {
+      sitemap += `
+  <url>
+    <loc>https://wallkpop.vercel.app/page/${page}</loc>
+    <lastmod>${getFormattedDate('Y-m-d')}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.6</priority>
+  </url>`;
+    }
+
+    sitemap += `
+</urlset>`;
+    res.header('Content-Type', 'application/xml');
+    res.send(sitemap);
+  } catch (error) {
+    console.error('Error generating sitemap:', error);
+    res.status(500).send('Error generating sitemap');
+  }
+});
+
+app.get('/robots.txt', (req, res) => {
+  const robotsTxt = `
+User-agent: *
+Allow: /
+Allow: /track/
+Allow: /page/
+Allow: /search
+Disallow: /panel
+Sitemap: https://wallkpop.vercel.app/sitemap.xml
+`;
+  res.header('Content-Type', 'text/plain');
+  res.send(robotsTxt);
 });
 
 app.get('/panel', async (req, res) => {
@@ -1026,7 +1096,8 @@ async function processTrack(trackData) {
   let filePath = trackData.file;
   let sha = trackData.sha;
 
-  if (!newId) {
+  if (!newId || !filePath || !sha) {
+    // New track creation
     const latestId = await getLatestId();
     newId = latestId + 1;
     const existingFiles = await getAllTrackFiles();
@@ -1035,10 +1106,15 @@ async function processTrack(trackData) {
     }
     const slug = generatePermalink(trackData.artist, trackData.title);
     filePath = `file/${newId}-${slug}.json`;
+    sha = null; // No SHA for new files
   } else {
-    if (!filePath || !sha) {
-      throw new Error('Missing file path or SHA for update');
+    // Update existing track
+    const existingFiles = await getAllTrackFiles();
+    const existingFile = existingFiles.find(file => file.id === newId && file.file === filePath);
+    if (!existingFile) {
+      throw new Error(`File ${filePath} with ID ${newId} does not exist`);
     }
+    // Use provided filePath and sha
   }
 
   const finalTrackData = {
@@ -1157,7 +1233,7 @@ app.get('/track/:id/:permalink', async (req, res) => {
             </table>
           </div>
           <div class="container">
-            <h2><center>🎵 Download MP3 ~%var-bitrate% kb/s 🎵</center></h2>
+            <h2><center>â†“â†“ Download MP3 ~%var-bitrate% kb/s â†“â†“</center></h2>
           </div>
           <audio id="player" controls>
             <source src="%var-link2%" type="audio/mp3">
@@ -1179,19 +1255,19 @@ app.get('/track/:id/:permalink', async (req, res) => {
                 <span itemprop="name">Home</span>
               </a>
               <meta itemprop="position" content="1">
-            </span> »
+            </span> Â» 
             <span itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
               <a itemtype="https://schema.org/Thing" itemprop="item" href="/site-allmusic.html">
                 <span itemprop="name">K-Pop</span>
               </a>
               <meta itemprop="position" content="2">
-            </span> »
+            </span> Â» 
             <span itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
               <a itemtype="https://schema.org/Thing" itemprop="item" href="/search?q=%var-artist%">
                 <span itemprop="name">%var-artist%</span>
               </a>
               <meta itemprop="position" content="3">
-            </span> »
+            </span> Â» 
             <span itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
               <span itemprop="name">%var-title%</span>
               <meta itemprop="position" content="4">
@@ -1214,7 +1290,7 @@ app.get('/track/:id/:permalink', async (req, res) => {
         ${getHeader()}
         ${content}
         <div id="k">
-          <h3 class="title">Related Update : <a href="/">More</a></h3>
+          <h3 class="title">Related Songs : <a href="/search?q=%var-title%">More</a></h3>
           <div class="list">
             ${relatedContent}
           </div>
@@ -1315,5 +1391,4 @@ app.get('/search', async (req, res) => {
   }
 });
 
-// Export the Express app for serverless environments
 module.exports = app;
