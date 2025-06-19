@@ -163,15 +163,25 @@ const getFormattedDate = (format) => {
   return formats[format] || date.toISOString().split('T')[0];
 };
 
-const getMetaHeader = (post = null, pageUrl = 'https://wallkpop.vercel.app/') => {
+const getMetaHeader = (post = null, pageUrl = 'https://wallkpop.vercel.app/', query = '') => {
   const isTrackPage = post !== null;
-  const title = isTrackPage ? `Download ${post.title} MP3 by ${post.artist} | Free Kpop Music` : 'Wallkpop | Download Latest K-Pop Music MP3';
-  const description = isTrackPage
-    ? `Download ${post.title} by ${post.artist} in MP3 format. Get the latest K-pop songs for free, only for promotional use. Support your favorite artist by buying the original track.`
-    : 'We are K-Pop lovers who spread the love for k-music. The site does not store any files on its server. All contents are for promotion only. Please support the artists by purchasing their CDs.';
-  const keywords = isTrackPage
-    ? `download kpop mp3, ${post.artist}, ${post.title} mp3, free kpop song, kpop download, ${post.title} download, korean pop music`
-    : 'KPop, Download KPop, KPop Music, KPop Songs, JPop, Download JPop, JPop Music, JPop Songs, CPop, Download CPop, CPop Music, CPop Songs, Ost KDrama, Lagu Soundtrack KDrama, Lagu Drama Korea, Lagu KPop Terbaru, Tangga Lagu KPop, Download K-Pop Latest Mp3';
+  const isSearchPage = query !== '';
+  let title, description, keywords;
+
+  if (isSearchPage) {
+    title = `Search: ${query} - Wallkpop`;
+    description = `Download ${query} in MP3 format. Get the latest K-pop songs for free, only for promotional use. Support your favorite artist by buying the original track.`;
+    keywords = `${query} Mp3, KPop, Download KPop, KPop Music, KPop Songs, JPop, Download JPop, JPop Music, JPop Songs, CPop, Download CPop, CPop Music, CPop Songs, Ost KDrama, Lagu Soundtrack KDrama, Lagu Drama Korea, Lagu KPop Terbaru, Tangga Lagu KPop, Download K-Pop Latest Mp3`;
+  } else if (isTrackPage) {
+    title = `Download ${post.title} MP3 by ${post.artist} | Free Kpop Music`;
+    description = `Download ${post.title} by ${post.artist} in MP3 format. Get the latest K-pop songs for free, only for promotional use. Support your favorite artist by buying the original track.`;
+    keywords = `download kpop mp3, ${post.artist}, ${post.title} mp3, free kpop song, kpop download, ${post.title} download, korean pop music`;
+  } else {
+    title = 'Wallkpop | Download Latest K-Pop Music MP3';
+    description = 'We are K-Pop lovers who spread the love for k-music. The site does not store any files on its server. All contents are for promotion only. Please support the artists by purchasing their CDs.';
+    keywords = 'KPop, Download KPop, KPop Music, KPop Songs, JPop, Download JPop, JPop Music, JPop Songs, CPop, Download CPop, CPop Music, CPop Songs, Ost KDrama, Lagu Soundtrack KDrama, Lagu Drama Korea, Lagu KPop Terbaru, Tangga Lagu KPop, Download K-Pop Latest Mp3';
+  }
+
   const og = isTrackPage ? `
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="music.song">
@@ -194,10 +204,8 @@ const getMetaHeader = (post = null, pageUrl = 'https://wallkpop.vercel.app/') =>
       "name": "${post.title}",
       "url": "${pageUrl}",
       "duration": "PT${post.duration || '0'}M",
-      "inAlbum": {
-        "@type": "MusicAlbum",
-        "name": "${post.album || 'Unknown'}"
-      },
+      "inAlbum": "${pageUrl}",
+      "title": "${post.title}",
       "byArtist": {
         "@type": "MusicGroup",
         "name": "${post.artist}"
@@ -222,15 +230,15 @@ const getMetaHeader = (post = null, pageUrl = 'https://wallkpop.vercel.app/') =>
     <meta name="description" content="${description}">
     <meta name="keywords" content="${keywords}">
     <meta name="author" content="Wallkpop">
-    <meta name="robots" content="index, follow">
-    <link rel="canonical" href="${pageUrl}">
+    <meta name="robots" content="index, follow all">
     <link rel="stylesheet" href="https://rawcdn.githack.com/caraaink/otakudesu/1ff200e0bc05d43443b4944b46532c4b4c3cc275/plyr.css" />
     <script src="https://rawcdn.githack.com/caraaink/otakudesu/1ff200e0bc05d43443b4944b46532c4b4c3cc275/plyr.polyfilled.js"></script>
     <link href="https://stackpath.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet" integrity="sha384-wvfXpqpZZVQGK6TAh5PVlGOfQNHSoD2xbE+QkPxCAFlNEevoEH3Sl0sibVcOQVnN" crossorigin="anonymous">
     <link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" type="text/css" href="https://rawcdn.githack.com/caraaink/wallkpop/e24482dd4db4eb4b4645ed2538a36b33257e4d82/public/style.css"/>
+    <link rel="stylesheet" type="text/css" href="https://rawcdn.githack.com/caraaink/wallkpop/e24482dd4db4eb4b4645c3b83a36b33257e4d82/public/style.css"/>
     <meta name="google-site-verification" content="9e9RaAsVDPAkag708Q30S8xSw8_qIMm87FJBoJWzink" />
     <meta name="yandex-verification" content="b507670596647101" />
+    ${og}
   `;
 };
 
@@ -242,7 +250,7 @@ const getHeader = (searchQuery = '') => `
       <nav>
         <ul>
           <li><a href="/">Home</a></li>
-          <li><a href="https://metrolagu.wapkiz.mobi/">K-Pop</a></li>
+          <li><a href="https://metrolagu.wapkiz.mobi.lnk">K-Pop</a></li>
           <li><a href="/search?q=ost">OST</a></li>
           <li><a href="https://meownime.wapkizs.com/">Anime</a></li>
         </ul>
@@ -261,22 +269,22 @@ const getFooter = (pageUrl) => `
   <footer>
     <div class="footer">
       <div class="menufot">
-        <p>We are <i>K-Pop lovers</i> who spread the love for k-music. The site does not store any files on its server. All contents are for promotion only. Please support the artists by purchasing their CDs.</p>
+        <p>We are <i>K-Pop lovers</i> who spread the love for k-pop music. The site does not store any files on its server at all. All contents are for promotion only use. Please support the artists by purchasing their CDs or digital albums.</p>
       </div>
       <div class="center">
-        <a href="https://www.facebook.com/wallkpop.official" title="Follow Facebook" style="background:#1877F2;color:#fff;padding:3px 8px;margin:1px;border:1px solid #ddd;font-weight:bold;border-radius:4px;display:inline-block;" target="_blank">Facebook</a>
-        <a href="https://www.instagram.com/wallkpop.official" title="Follow Instagram" style="background:linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888);color:#ffffff;padding:3px 8px;margin:1px;font-weight:bold;border:1px solid #ddd;border-radius:4px;display:inline-block;" target="_blank">Instagram</a>
-        <a href="https://x.com/wallkpop_mp3" title="Follow X" style="background:#000000;color:#ffffff;padding:3px 8px;margin:1px;font-weight:bold;border:1px solid #ddd;border-radius:4px;display:inline-block;" target="_blank">X</a>
-        <a href="whatsapp://send?text=Wallkpop | Download Latest K-Pop Music MP3%0a%20${pageUrl}" title="Bagikan ke WhatsApp" style="background:#019C00;color:#ffffff;padding:3px 8px;margin:1px;font-weight:bold;border:1px solid #ddd;border-radius:4px;display:inline-block;">WA</a>
-        <a href="https://t.me/wallkpopmp3" title="Join Telegram" style="background:#0088CC;color:#ffffff;padding:3px 8px;margin:1px;font-weight:bold;border:1px solid #ddd;border-radius:4px;display:inline-block;" target="_blank">Telegram</a>
-        <a href="https://www.threads.com/@wallkpop.official" title="Follow Threads" style="background:#000000;color:#ffffff;padding:3px 8px;margin:1px;font-weight:bold;border:1px solid #ddd;border-radius:4px;display:inline-block;" target="_blank">Threads</a>
+        <a href="https://www.facebook.com/wallkpop.official" title="Follow us on Facebook" style="background:#1877F2;color:#fff;padding:3px;color:white;padding:8px;margin:1px;border:1px;border-style: solid;border-color:#ddd;font-weight:bold;font-weight:4px;border-radius:4px;display:inline-block;" target="_blank">Facebook</a>
+        <a href="https://www.instagram.com/wallkpop.official" title="Follow us on Instagram" style="background:linear-gradient(45deg;, #ff450933, #ffe4e6683c,%;width:#dc274;color:#cc2366;color:#bc1888);padding:3px;color:#fff;padding:8px;margin:1px;border:1px;border-style: solid;border-width:#ddd;border-radius:4px;display:inline-block;font-weight:bold;" target="_blank">Instagram</a>
+        <a href="https://x.com/wallkpop_mp3" title="Follow on X" style="background:#000000;color:#ffffff;padding:3px;color:white;padding:8px;margin:1px;font-weight:bold;border:1px solid #ddd;border-radius:4px;display:inline-block;" target="_blank">X</a>
+        <a href="whatsapp://send?text=Wallkpop% |%20Download%20Latest%20K-Pop%20Music%20MP3%0a%20${pageUrl}" title="Bagikan ke WhatsApp" style="background:#019C00;color:#ffffff;padding:3px;color:white;padding:8px;margin:1px;font-weight:bold;border:1px solid #ddd;border-radius:4px;display:inline;" target="_blank">WA</a>
+        <a href="https://t.me/wallkpopmp3" title="Join Telegram" style="background:#0088CC;color:#fff;padding:3px;color:white;padding:8px;margin:1px;font-weight:bold;border:1px solid;border-radius:4px;" target="_blank">Telegram</a>
+        <a href="https://www.threads.com/@wallkpop.official" title="Follow on Threads" style="background:#000000;color:white;padding:3px;padding:8px;color:#fff;margin:1px;font-weight:bold;border:1px solid;color:#ddd;border-radius:4px;display:inline-block;" target="_blank">Threads</a>
         <br><br>
         <div class="kiri">
           <a href="#">Disclaimer</a>
         </div>
         2019 - ${getFormattedDate('Y')} WALLKPOP Network.
         <div class="kanan">
-          <a href="#" id="gotop" rel="nofollow" name="gotop">TOP</a>
+          <a href="#" href="#" id="gotop" rel="nofollow" name="gotop">TOP</a>
         </div>
       </div>
       <br>
@@ -286,78 +294,78 @@ const getFooter = (pageUrl) => `
 `;
 
 const parseBlogTags = (template, posts, options = {}) => {
-  const { limit = 10, noMessage = '<center>No File</center>', to = ':url-1(:to-file:):' } = options;
-  if (!posts || posts.length === 0) return noMessage;
+  const { limit = 10, noMessage = '<center>No File</center>', to = ':url-1(:to-file:)' } => {
+    let result = '';
+    if (!posts || posts.length === 0) return noMessage;
 
-  let result = '';
-  posts.slice(0, limit).forEach((post, index) => {
-    let item = template;
-    const permalink = generatePermalink(post.artist, post.title);
+    posts.slice(0, limit).forEach((post, index) => {
+      let item = template;
+      const permalink = generatePermalink(post.artist, post.title);
 
-    let link2 = post.link2 || '#';
-    const driveRegex = /https:\/\/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)\/view/;
-    const match = link2.match(driveRegex);
-    if (match && match[1]) {
-      link2 = `https://www.googleapis.com/drive/v3/files/${match[1]}?alt=media&key=${GOOGLE_DRIVE_API_KEY}`;
-    }
+      let link2 = post.link2 || '#';
+      const driveRegex = /https:\/\/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)\/view/;
+      const match = link2.match(driveRegex);
+      if (match && match[1]) {
+        link2 = `https://www.googleapis.com/drive/v3/files/${match[1]}?alt=media&key=${GOOGLE_DRIVE_API_KEY}`;
+      }
 
-    const renderIfNotEmpty = (value, htmlTemplate) => value ? htmlTemplate.replace('%value%', value) : '';
+      const renderIfNotEmpty = (value, htmlTemplate) => value ? htmlTemplate.replace(/%value%/g, value) : '';
 
-    const escapeForJS = (str) => {
-      if (!str) return '';
-      return str.replace(/\\/g, '\\\\')
-               .replace(/"/g, '\\"')
-               .replace(/\n/g, '\\n')
-               .replace(/\r/g, '\\r')
-               .replace(/\t/g, '\\t');
-    };
+      const escapeForJS = (str) => {
+        if (!str) return '';
+        return str.replace(/\\/g, '\\')
+                 .replace(/"/g, '\\"')
+                 .replace(/\n/g, '\\n')
+                 .replace(/\r/g, '\\r')
+                 .replace(/\t/g, '\\t');
+      };
 
-    item = item.replace(/%id%/g, post.id)
-      .replace(/%var-artist%/g, post.artist)
-      .replace(/%var-title%/g, post.title)
-      .replace(/%title%/g, `${post.artist} - ${post.title}`)
-      .replace(/%var-album%/g, post.album || '')
-      .replace(/%var-genre%/g, post.genre || '')
-      .replace(/%var-category%/g, post.category || '')
-      .replace(/%var-duration%/g, post.duration || '')
-      .replace(/%var-size%/g, post.size || '')
-      .replace(/%var-size128%/g, post.size128 || '')
-      .replace(/%var-size192%/g, post.size192 || '')
-      .replace(/%var-size320%/g, post.size320 || '')
-      .replace(/%var-bitrate%/g, post.bitrate || '192')
-      .replace(/%var-bitrate128%/g, post.bitrate128 || '128')
-      .replace(/%var-bitrate192%/g, post.bitrate192 || '192')
-      .replace(/%var-bitrate320%/g, post.bitrate320 || '320')
-      .replace(/%var-thumb%/g, post.thumb || 'https://via.placeholder.com/150')
-      .replace(/%var-link%/g, post.link || '#')
-      .replace(/%var-link2%/g, link2)
-      .replace(/%var-url128%/g, post.url128 || post.link || '#')
-      .replace(/%var-url192%/g, post.url192 || post.link || '#')
-      .replace(/%var-url320%/g, post.url320 || post.link || '#')
-      .replace(/%hits%/g, post.hits || '0')
-      .replace(/%var-lyricstimestamp%/g, escapeForJS(post.lyricstimestamp || ''))
-      .replace(/%var-lyrics%/g, post.lyrics || '')
-      .replace(/%var-name%/g, post.name || `${post.artist} - ${post.title}`)
-      .replace(/%sn%/g, index + 1)
-      .replace(/%date=Y-m-d%/g, getFormattedDate('Y-m-d'))
-      .replace(/%text%/g, post.year || '')
-      .replace(/:url-1\(:to-file:\):/g, `/track/${post.id}/${permalink}`)
-      .replace(/:page_url:/g, `https://wallkpop.vercel.app/track/${post.id}/${permalink}`)
-      .replace(/:permalink:/g, permalink);
+      item = item.replace(/%id%/g, post.id)
+        .replace(/%var-artist%/g, post.artist)
+        .replace(/%var-title%/g, post.title)
+        .replace(/%title%/g, `${post.artist} - ${post.title}`)
+        .replace(/%var-album%/g, post.album || '')
+        .replace(/%var-genre%/g, post.genre || '')
+        .replace(/%var-category%/g, post.category || '')
+        .replace(/%var-duration%/g, post.duration || '')
+        .replace(/%var-size%/g, post.size || '')
+        .replace(/%var-size128%/g, post.size128 || '')
+        .replace(/%var-size192%/g, post.size192 || '')
+        .replace(/%var-size320%/g, post.size320 || '')
+        .replace(/%var-bitrate%/g, post.bitrate || '192')
+        .replace(/%var-bitrate128%/g, post.bitrate128 || '128')
+        .replace(/%var-bitrate192%/g, post.bitrate192 || '192')
+        .replace(/%var-bitrate320%/g, post.bitrate320 || '320')
+        .replace(/%var-thumb%/g, post.thumb || 'https://via.placeholder.com/150')
+        .replace(/%var-link%/g, post.link || '#')
+        .replace(/%var-link2%/g, link2)
+        .replace(/%var-url128%/g, post.url128 || post.link || '#')
+        .replace(/%var-url192%/g, post.url192 || post.link || '#')
+        .replace(/%var-url320%/g, post.url320 || post.link || '#')
+        .replace(/%hits%/g, post.hits || '0')
+        .replace(/%var-lyricstimestamp%/g, escapeForJS(post.lyricstimestamp || ''))
+        .replace(/%var-lyrics%/g, post.lyrics || '')
+        .replace(/%var-name%/g, post.name || `${post.artist} - ${post.title}`)
+        .replace(/%sn%/g, index + 1)
+        .replace(/%date=Y-m-d%/g, getFormattedDate('Y-m-d'))
+        .replace(/%text%/g, post.year || '')
+        .replace(/:url-1\(:to-file:\):/g, `/track/${post.id}/${permalink}`)
+        .replace(/:page_url:/g, `https://wallkpop.vercel.app/track/${post.id}/${permalink}`)
+        .replace(/:permalink:/g, permalink);
 
-    item = item.replace(/<tr><td width="30%">Album<\/td><td>:<\/td><td>%var-album%<\/td><\/tr>/g, 
-      renderIfNotEmpty(post.album, '<tr><td width="30%">Album</td><td>:</td><td>%value%</td></tr>'))
-      .replace(/<tr><td>Genre<\/td><td>:<\/td><td>%var-genre%<\/td><\/tr>/g, 
-      renderIfNotEmpty(post.genre, '<tr><td>Genre</td><td>:</td><td>%value%</td></tr>'))
-      .replace(/<tr><td>Category<\/td><td>:<\/td><td>%var-category%<\/td><\/tr>/g, 
-      renderIfNotEmpty(post.category, '<tr><td>Category</td><td>:</td><td>%value%</td></tr>'))
-      .replace(/<tr><td>Duration<\/td><td>:<\/td><td>%var-duration% minutes<\/td><\/tr>/g, 
-      renderIfNotEmpty(post.duration, '<tr><td>Duration</td><td>:</td><td>%value% minutes</td></tr>'));
+      item = item.replace(/<tr><td width="30%">Album<\/td><td>:<\/td><td>%var-album%<\/td><\/tr>/g, 
+        renderIfNotEmpty(post.album, '<tr><td width="30%">Album</td><td>:</td><td>%value%</td></tr>'))
+        .replace(/<tr><td>Genre<\/td><td>:<\/td><td>%var-genre%<\/td><\/tr>/g, 
+        renderIfNotEmpty(post.genre, '<tr><td>Genre</td><td>:</td><td>%value%</td></tr>'))
+        .replace(/<tr><td>Category<\/td><td>:<\/td><td>%var-category%<\/td><\/tr>/g, 
+        renderIfNotEmpty(post.category, '<tr><td>Category</td><td>:</td><td>%value%</td></tr>'))
+        .replace(/<tr><td>Duration<\/td><td>:<\/td><td>%var-duration% minutes<\/td><\/tr>/g, 
+        renderIfNotEmpty(post.duration, '<tr><td>Duration</td><td>:</td><td>%value% minutes</td></tr>'));
 
-    result += item;
-  });
-  return result;
-};
+      result += item;
+    });
+    return result;
+  };
 
 app.get('/', async (req, res) => {
   try {
@@ -407,24 +415,6 @@ app.get('/', async (req, res) => {
       <html>
       <head>
         ${getMetaHeader(null, 'https://wallkpop.vercel.app/')}
-        <style>
-          body { font-family: 'Lora', Arial, sans-serif; margin: 0; padding: 0; }
-          header { text-align: center; padding: 20px; background: #f4f4f4; }
-          header h1 a { color: #333; text-decoration: none; }
-          header h2 { color: #666; font-size: 1.2rem; }
-          nav ul { list-style: none; padding: 0; display: flex; justify-content: center; gap: 20px; }
-          nav ul li a { color: #007bff; text-decoration: none; }
-          #search { margin: 20px auto; max-width: 600px; }
-          #search form { display: flex; gap: 10px; }
-          .inp-text { padding: 8px; width: 80%; border: 1px solid #ddd; border-radius: 4px; }
-          .inp-btn { padding: 8px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
-          .inp-btn:hover { background: #0056b3; }
-          footer { text-align: center; padding: 20px; background: #f4f4f4; margin-top: 20px; }
-          .footer .center { margin: 10px 0; }
-          .kiri, .kanan { display: inline-block; margin: 0 10px; }
-          .album-list table { width: 100%; border-collapse: collapse; }
-          .album-list td { padding: 5px; vertical-align: top; }
-        </style>
       </head>
       <body>
         ${getHeader()}
@@ -503,7 +493,7 @@ app.get('/panel', async (req, res) => {
             document.getElementById('var-id').value = id;
             document.getElementById('var-artist').value = artist;
             document.getElementById('var-title').value = title;
-            document.getElementById('var-year').value = year.trim();
+            document.getElementById('var-year').value = year;
             document.getElementById('var-album').value = album || '';
             document.getElementById('var-genre').value = genre || '';
             document.getElementById('var-category').value = category || '';
@@ -589,7 +579,7 @@ app.get('/panel', async (req, res) => {
               </div>
               <div class="form-group">
                 <label for="var-year">Year</label>
-                <input type="number" id="var-year" name="var-year" required>
+                <input type="number" id="var-year" name="var-year">
               </div>
               <div class="form-group">
                 <label for="var-album">Album</label>
@@ -984,7 +974,7 @@ app.get('/track/:id/:permalink', async (req, res) => {
             </table>
           </div>
           <div class="container">
-            <h2><center>â��â�� Download MP3 ~%var-bitrate% kb/s â��â��</center></h2>
+            <h2><center>🎵 Download MP3 ~%var-bitrate% kb/s 🎵</center></h2>
           </div>
           <audio id="player" controls>
             <source src="%var-link2%" type="audio/mp3">
@@ -1016,19 +1006,19 @@ app.get('/track/:id/:permalink', async (req, res) => {
                 <span itemprop="name">Home</span>
               </a>
               <meta itemprop="position" content="1">
-            </span> Â»
+            </span> »
             <span itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
               <a itemtype="https://schema.org/Thing" itemprop="item" href="/site-allmusic.html">
                 <span itemprop="name">K-Pop</span>
               </a>
               <meta itemprop="position" content="2">
-            </span> Â»
+            </span> »
             <span itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
               <a itemtype="https://schema.org/Thing" itemprop="item" href="/search?q=%var-artist%">
                 <span itemprop="name">%var-artist%</span>
               </a>
               <meta itemprop="position" content="3">
-            </span> Â»
+            </span> »
             <span itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
               <span itemprop="name">%var-title%</span>
               <meta itemprop="position" content="4">
@@ -1079,7 +1069,7 @@ app.get('/search', async (req, res) => {
           track.artist.toLowerCase().includes(query) ||
           track.title.toLowerCase().includes(query) ||
           track.year.toString().includes(query) ||
-          track.category.toLowerCase().includes(query)
+          (track.genre && track.genre.toLowerCase().includes(query))
         ) {
           posts.push({ ...track, id: item.id });
         }
@@ -1122,7 +1112,7 @@ app.get('/search', async (req, res) => {
       <!DOCTYPE html>
       <html>
       <head>
-        ${getMetaHeader(null, `https://wallkpop.vercel.app/search?q=${encodeURIComponent(req.query.q || '')}`)}
+        ${getMetaHeader(null, `https://wallkpop.vercel.app/search?q=${encodeURIComponent(req.query.q || '')}`, req.query.q || '')}
       </head>
       <body>
         ${getHeader(req.query.q || '')}
