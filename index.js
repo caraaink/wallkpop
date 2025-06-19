@@ -235,10 +235,10 @@ const getMetaHeader = (post = null, pageUrl = 'https://wallkpop.vercel.app/', qu
     <meta name="keywords" content="${keywords}">
     <meta name="author" content="Wallkpop">
     <meta name="robots" content="index, follow">
-    <link rel="shortcut icon" type="image/x-icon" href="https://3.bp.blogspot.com/-lMlVM2JcX2I/XIEj2qoWVUI/AAAAAAAACCA/CrQSkBvttVMnVKzTRtyO-GB9X3sSJIt5QCLcBGAs/s1600/favicon.ico">
+    <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico">
     <link rel="canonical" href="${pageUrl}">
-    <link rel="stylesheet" href="https://rawcdn.githack.com/caraaink/otakudesu/1ff200e0bc05d43443b4944b46532c4b4c3cc275/plyr.css" />
-    <script src="https://rawcdn.githack.com/caraaink/otakudesu/1ff200e0bc05d43443b4944b46532c4b4c3cc275/plyr.polyfilled.js"></script>
+    <link rel="stylesheet" href="/plyr.css" />
+    <script src="/plyr.polyfilled.js"></script>
     <link href="https://stackpath.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet" integrity="sha384-wvfXpqpZZVQGK6TAh5PVlGOfQNHSoD2xbE+QkPxCAFlNEevoEH3Sl0sibVcOQVnN" crossorigin="anonymous">
     <link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="/style.css"/>
@@ -589,9 +589,10 @@ app.get('/page/:page', async (req, res) => {
               <i class="fa fa-calendar" aria-hidden="true"></i> ${getFormattedDate('d-m-Y')}
             </span>
           </h3>
+          <div class="album">
           ${postList}
           ${pagination}
-        </div>
+        </div></div>
         ${getFooter(`https://wallkpop.vercel.app/page/${page}`)}
       </body>
     </html>
@@ -1254,7 +1255,7 @@ app.get('/track/:id/:permalink', async (req, res) => {
           </div>
           <div id="debug" class="debug">Loading...</div>
           <script>const lyricsText = "%var-lyricstimestamp%";</script>
-          <script src="https://cdn.jsdelivr.net/gh/caraaink/meownime@refs/heads/main/javascript/audio-lyrics-timestamp.js"></script>
+          <script src="/audio-lyrics-timestamp.js"></script>
           <div style="text-align: center;"><br>
             %download-buttons%
           </div>
