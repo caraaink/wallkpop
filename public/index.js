@@ -165,20 +165,20 @@ async function getAllTrackFiles() {
 async function getLatestId() {
   try {
     const files = await getAllTrackFiles();
-    if (!files || files.length === 0) return 0;
+    if (!files || files.length === 0) return 10;
     const ids = files.map(item => item.id);
     const maxId = Math.max(...ids);
     return maxId;
   } catch (error) {
     console.error('Error getting latest ID:', error.message);
-    return 0;
+    return 10;
   }
 }
 
 // Helper function to generate permalink
 const generatePermalink = (artist, title) => {
   if (!artist || !title) return 'default-permalink';
-  return slugify(`${artist}-${title}`, { lower: true, strict: true, remove: /[*+~.()'"!:@]/g });
+  return slugify(`${artist}-${title}`, { lower: true, strict: true, remove: /[*+*~.()'"!:@]/g });
 };
 
 // Helper function to get current date/time
@@ -364,8 +364,8 @@ const parseBlogTags = (template, posts, options = {}) => {
       .replace(/%var-url192%/g, post.url192 || post.link || '#')
       .replace(/%var-url320%/g, post.url320 || post.link || '#')
       .replace(/%hits%/g, '')
-      .replace(/%var-lyricstimestamp%/g, post.lyricstimestamp || '')
-      .replace(/%var-lyrics%/g, post.lyrics || '')
+      .replace(/%var-lyricstimestamp%/g, (post.lyricstimestamp || '').replace(/"/g, '&quot;'))
+      .replace(/%var-lyrics%/g, (post.lyrics || '').replace(/"/g, '&quot;'))
       .replace(/%var-name%/g, post.name || `${post.artist} - ${post.title}`)
       .replace(/%sn%/g, index + 1)
       .replace(/%date=Y-m-d%/g, getFormattedDate('Y-m-d'))
@@ -497,7 +497,7 @@ app.get('/panel', async (req, res) => {
       <div class="track-item">
         <input type="checkbox" class="track-checkbox" data-file="%file%" data-sha="%sha%" data-id="%id%">
         <span>%var-artist% - %var-title% (%var-category%)</span>
-        <button onclick="editTrack('%id%', '%var-artist%', '%var-title%', '%var-year%', '%var-album%', '%var-genre%', '%var-category%', '%var-duration%', '%var-size%', '%var-size128%', '%var-size192%', '%var-size320%', '%var-bitrate%', '%var-bitrate128%', '%var-bitrate192%', '%var-bitrate320%', '%var-thumb%', '%var-link%', '%var-link2%', '%var-url128%', '%var-url192%', '%var-url320%', '%var-lyricstimestamp%', '%var-lyrics%', '%var-name%', '%file%', '%sha%')">Edit</button>
+        <button onclick="editTrack('%id%', '%var-artist%', '%var-title%', '%text%', '%var-album%', '%var-genre%', '%var-category%', '%var-duration%', '%var-size%', '%var-size128%', '%var-size192%', '%var-size320%', '%var-bitrate%', '%var-bitrate128%', '%var-bitrate192%', '%var-bitrate320%', '%var-thumb%', '%var-link%', '%var-link2%', '%var-url128%', '%var-url192%', '%var-url320%', '%var-lyricstimestamp%', '%var-lyrics%', '%var-name%', '%file%', '%sha%')">Edit</button>
         <button onclick="deleteTrack('%file%', '%sha%', '%id%')">Delete</button>
       </div>`, posts, { limit: 100 });
 
@@ -576,18 +576,24 @@ app.get('/panel', async (req, res) => {
               fetch('/panel/delete', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ file, sha })
+                body: JSON.stringify({ file: file, sha: sha })
               })
-              .then(response => response.json())
-              .then(result => {
+              .then(function(response) {
+                if (!response.ok) {
+                  throw new Error('Network response was not ok: ' + response.statusText);
+                }
+                return response.json();
+              })
+              .then(function(result) {
                 if (result.message) {
                   alert('Track deleted successfully');
-                  location.reload();
+                  window.location.reload();
                 } else {
-                  alert('Error deleting track: ' + result.error);
+                  alert('Error deleting track: ' + (result.error || 'Unknown error'));
                 }
               })
-              .catch(error => {
+              .catch(function(error) {
+                console.error('Delete error:', error);
                 alert('Error deleting track: ' + error.message);
               });
             }
@@ -609,18 +615,24 @@ app.get('/panel', async (req, res) => {
               fetch('/panel/delete-multiple', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ tracks })
+                body: JSON.stringify({ tracks: tracks })
               })
-              .then(function(response) { return response.json(); })
+              .then(function(response) {
+                if (!response.ok) {
+                  throw new Error('Network response was not ok: ' + response.statusText);
+                }
+                return response.json();
+              })
               .then(function(result) {
                 if (result.message) {
                   alert('Selected tracks deleted successfully');
-                  location.reload();
+                  window.location.reload();
                 } else {
-                  alert('Error deleting tracks: ' + result.error);
+                  alert('Error deleting tracks: ' + (result.error || 'Unknown error'));
                 }
               })
               .catch(function(error) {
+                console.error('Delete multiple error:', error);
                 alert('Error deleting tracks: ' + error.message);
               });
             }
@@ -639,16 +651,25 @@ app.get('/panel', async (req, res) => {
             document.getElementById('var-file').value = '';
             document.getElementById('var-sha').value = '';
             document.getElementById('submit-btn').textContent = 'Upload Track';
-            fetch('/panel/reset-cache', { method: 'POST' })
-              .then(function(response) { return response.json(); })
+            fetch('/panel/reset-cache', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' }
+            })
+              .then(function(response) {
+                if (!response.ok) {
+                  throw new Error('Network response was not ok');
+                }
+                return response.json();
+              })
               .then(function(result) {
                 if (result.message) {
                   alert('Cache cleared successfully');
                 } else {
-                  alert('Error clearing cache: ' + result.error);
+                  alert('Error clearing cache: ' + (result.error || 'Unknown error'));
                 }
               })
               .catch(function(error) {
+                console.error('Reset cache error:', error);
                 alert('Error clearing cache: ' + error.message);
               });
           }
@@ -808,8 +829,8 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
         if (Array.isArray(trackData)) {
           trackData = trackData.map(track => ({
             ...track,
-            year: parseInt(track.year, 10),
             id: track.id ? parseInt(track.id, 10) : undefined,
+            year: parseInt(track.year, 10) || 0,
             album: track.album || "",
             genre: track.genre || "",
             category: track.category || "",
@@ -818,6 +839,10 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
             size128: track.size128 || "",
             size192: track.size192 || "",
             size320: track.size320 || "",
+            bitrate: track.bitrate || "192",
+            bitrate128: track.bitrate128 || "128",
+            bitrate192: track.bitrate192 || "192",
+            bitrate320: track.bitrate320 || "320",
             thumb: track.thumb || "",
             link: track.link || "",
             link2: track.link2 || "",
@@ -831,8 +856,8 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
         } else {
           trackData = [{
             ...trackData,
-            year: parseInt(trackData.year, 10),
             id: trackData.id ? parseInt(trackData.id, 10) : undefined,
+            year: parseInt(trackData.year, 10) || 0,
             album: trackData.album || "",
             genre: trackData.genre || "",
             category: trackData.category || "",
@@ -841,6 +866,10 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
             size128: trackData.size128 || "",
             size192: trackData.size192 || "",
             size320: trackData.size320 || "",
+            bitrate: trackData.bitrate || "192",
+            bitrate128: trackData.bitrate128 || "128",
+            bitrate192: trackData.bitrate192 || "192",
+            bitrate320: trackData.bitrate320 || "320",
             thumb: trackData.thumb || "",
             link: trackData.link || "",
             link2: trackData.link2 || "",
@@ -861,7 +890,7 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
         return res.json({ message: 'Tracks uploaded successfully', results });
       } catch (parseError) {
         await fs.unlink(req.file.path);
-        return res.status(400).send('Invalid JSON file');
+        return res.status(400).send('Invalid JSON file: ' + parseError.message);
       }
     } else {
       // Handle manual form input
@@ -900,7 +929,7 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
         return res.status(400).send('Missing required fields: artist, title, or year');
       }
       const yearNum = parseInt(year, 10);
-      if (isNaN(yearNum)) {
+      if (isNaN(yearNum) || yearNum === 0) {
         return res.status(400).send('Invalid year value');
       }
 
@@ -916,10 +945,10 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
         size128: size128 || "",
         size192: size192 || "",
         size320: size320 || "",
-        bitrate: bitrate || '192',
-        bitrate128: bitrate128 || '128',
-        bitrate192: bitrate192 || '192',
-        bitrate320: bitrate320 || '320',
+        bitrate: bitrate || "192",
+        bitrate128: bitrate128 || "128",
+        bitrate192: bitrate192 || "192",
+        bitrate320: bitrate320 || "320",
         thumb: thumb || "",
         link: link || "",
         link2: link2 || "",
@@ -929,7 +958,7 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
         lyricstimestamp: lyricstimestamp || "",
         lyrics: lyrics || "",
         name: name || `${artist} - ${title}`,
-        id: id ? parseInt(id) : null,
+        id: id ? parseInt(id, 10) : undefined,
         file,
         sha
       }];
@@ -950,11 +979,11 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
 // Helper function to process a single track
 async function processTrack(trackData) {
   // Validate required fields
-  if (!trackData.artist || !trackData.title || !trackData.year) {
-    throw new Error('Missing required fields in JSON: artist, title, or year');
+  if (!trackData.artist || !trackData.title || trackData.year === 0) {
+    throw new Error('Missing or invalid required fields: artist, title, or year');
   }
   const yearNum = parseInt(trackData.year, 10);
-  if (isNaN(yearNum)) {
+  if (isNaN(yearNum) || yearNum === 0) {
     throw new Error('Invalid year value in JSON');
   }
 
@@ -972,6 +1001,11 @@ async function processTrack(trackData) {
     }
     const slug = generatePermalink(trackData.artist, trackData.title);
     filePath = `file/${newId}-${slug}.json`;
+  } else {
+    // For updates, ensure filePath and sha are provided
+    if (!filePath || !sha) {
+      throw new Error('Missing file path or SHA for update');
+    }
   }
 
   // Finalize track data
@@ -988,10 +1022,10 @@ async function processTrack(trackData) {
     size128: trackData.size128 || "",
     size192: trackData.size192 || "",
     size320: trackData.size320 || "",
-    bitrate: trackData.bitrate || '192',
-    bitrate128: trackData.bitrate128 || '128',
-    bitrate192: trackData.bitrate192 || '192',
-    bitrate320: trackData.bitrate320 || '320',
+    bitrate: trackData.bitrate || "192",
+    bitrate128: trackData.bitrate128 || "128",
+    bitrate192: trackData.bitrate192 || "192",
+    bitrate320: trackData.bitrate320 || "320",
     thumb: trackData.thumb || "",
     link: trackData.link || "",
     link2: trackData.link2 || "",
@@ -1001,7 +1035,7 @@ async function processTrack(trackData) {
     lyricstimestamp: trackData.lyricstimestamp || "",
     lyrics: trackData.lyrics || "",
     name: trackData.name || `${trackData.artist} - ${trackData.title}`,
-    created_at: new Date().toISOString()
+    created_at: trackData.created_at || new Date().toISOString()
   };
 
   // Save track
@@ -1024,13 +1058,17 @@ app.post('/panel/delete', async (req, res) => {
       return res.status(400).json({ error: 'Missing file or sha' });
     }
 
-    // Attempt to fetch file to verify existence
-    await getGitHubFile(file);
+    // Verify file existence
+    try {
+      await getGitHubFile(file);
+    } catch (error) {
+      return res.status(404).json({ error: `File ${file} not found` });
+    }
 
     await deleteGitHubFile(file, sha, `Delete track: ${file}`);
     res.json({ message: 'Track deleted successfully' });
   } catch (error) {
-    console.error('Error deleting track:', error);
+    console.error('Error deleting track:', error.message);
     res.status(500).json({ error: `Error deleting track: ${error.message}` });
   }
 });
@@ -1060,7 +1098,7 @@ app.post('/panel/delete-multiple', async (req, res) => {
 
     res.json({ message: 'All selected tracks deleted successfully' });
   } catch (error) {
-    console.error('Error deleting multiple tracks:', error);
+    console.error('Error deleting multiple tracks:', error.message);
     res.status(500).json({ error: `Error deleting tracks: ${error.message}` });
   }
 });
@@ -1075,7 +1113,7 @@ app.post('/panel/reset-cache', async (req, res) => {
     await kv.del('github:track_files');
     res.json({ message: 'Cache cleared successfully' });
   } catch (error) {
-    console.error('Error resetting cache:', error);
+    console.error('Error resetting cache:', error.message);
     res.status(500).json({ error: `Error resetting cache: ${error.message}` });
   }
 });
@@ -1322,7 +1360,7 @@ app.post('/api/post', async (req, res) => {
       return res.status(400).json({ error: 'Missing required fields: artist, title, or year' });
     }
     const yearNum = parseInt(year, 10);
-    if (isNaN(yearNum)) {
+    if (isNaN(yearNum) || yearNum === 0) {
       return res.status(400).json({ error: 'Invalid year value' });
     }
 
@@ -1351,10 +1389,10 @@ app.post('/api/post', async (req, res) => {
       size128: size128 || "",
       size192: size192 || "",
       size320: size320 || "",
-      bitrate: bitrate || '192',
-      bitrate128: bitrate128 || '128',
-      bitrate192: bitrate192 || '192',
-      bitrate320: bitrate320 || '320',
+      bitrate: bitrate || "192",
+      bitrate128: bitrate128 || "128",
+      bitrate192: bitrate192 || "192",
+      bitrate320: bitrate320 || "320",
       thumb: thumb || "",
       link: link || "",
       link2: link2 || "",
