@@ -69,9 +69,26 @@ async function getGitHubFile(path) {
   }
 }
 
+async function checkFileExists(path) {
+  try {
+    const response = await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', {
+      owner: repoOwner,
+      repo: repoName,
+      path,
+      ref: branch
+    });
+    return response.data.sha;
+  } catch (error) {
+    if (error.status === 404) return null;
+    throw error;
+  }
+}
+
 async function updateGitHubFile(path, content, message, sha = null, retries = 2) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
+      // Verify SHA only if updating an existing file
+      const currentSha = sha || (await checkFileExists(path));
       const response = await octokit.request('PUT /repos/{owner}/{repo}/contents/{path}', {
         owner: repoOwner,
         repo: repoName,
@@ -79,17 +96,18 @@ async function updateGitHubFile(path, content, message, sha = null, retries = 2)
         message,
         content: Buffer.from(JSON.stringify(content, null, 2)).toString('base64'),
         branch,
-        sha: sha || undefined
+        sha: currentSha || undefined
       });
 
       const cacheKey = `github:${path}`;
       await kv.set(cacheKey, content, { ex: 3600 });
       await kv.del('github:track_files');
+      await kv.del('latest_id');
       return response.data.commit.sha;
     } catch (error) {
       if (attempt < retries && (error.status === 429 || error.message.includes('rate limit'))) {
         const delay = Math.pow(2, attempt) * 1000;
-        console.warn(`Rate limit hit, retrying in ${delay}ms...`);
+        console.warn(`Rate limit hit for ${path}, retrying in ${delay}ms...`);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }
@@ -165,11 +183,13 @@ async function getAllTrackFiles(page = null, perPage = null) {
   }
 }
 
-async function getLatestId() {
+async function getLatestId(force = false) {
   try {
     const cacheKey = 'latest_id';
-    const cached = await kv.get(cacheKey);
-    if (cached) return cached;
+    if (!force) {
+      const cached = await kv.get(cacheKey);
+      if (cached) return cached;
+    }
 
     const files = await getAllTrackFiles();
     const latestId = files.length === 0 ? 10 : Math.max(...files.map(item => item.id));
@@ -408,11 +428,11 @@ const parseBlogTags = (template, posts, options = {}) => {
       <button class="downd bitrate-320"><span class="hq-label">HQ</span><div class="title">Download Now</div><div class="size">(${post.size320 || ''})</div><span class="bitrate">${post.bitrate320 || '320'} kb/s</span></button>
     </a>` : '';
 
-    const link192 = post.url192 ? `<a href="https://meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(stripProtocol(post.thumb || ''))}&to-size=${encodeURIComponent(post.size192 || '')}&to-link2=${encodeURIComponent(stripProtocol(post.url192 || ''))}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(stripProtocol(post.link || ''))}&to-sizeori=${encodeURIComponent(post.size192 || '')}" target="_blank">
+    const link192 = post.url192 ? `<a href="https://meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(stripProtocol(post.thumb || ''))}&to-size=${encodeURIComponent(post.size192 || ''))}&to-link2=${encodeURIComponent(stripProtocol(post.url192 || ''))}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(stripProtocol(post.link || ''))}&to-sizeori=${encodeURIComponent(post.size192 || '')}" target="_blank">
       <button class="downd bitrate-192"><span class="medium-label">MQ</span><div class="title">Download Now</div><div class="size">(${post.size192 || ''})</div><span class="bitrate">${post.bitrate192 || '192'} kb/s</span></button>
     </a>` : '';
 
-    const link128 = post.url128 ? `<a href="https://meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(stripProtocol(post.thumb || ''))}&to-size=${encodeURIComponent(post.size128 || '')}&to-link2=${encodeURIComponent(stripProtocol(post.url128 || ''))}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(stripProtocol(post.link || ''))}&to-sizeori=${encodeURIComponent(post.size128 || '')}" target="_blank">
+    const link128 = post.url128 ? `<a href="https://meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(stripProtocol(post.thumb || ''))}&to-size=${encodeURIComponent(post.size128 || ''))}&to-link2=${encodeURIComponent(stripProtocol(post.url128 || ''))}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(stripProtocol(post.link || ''))}&to-sizeori=${encodeURIComponent(post.size128 || '')}" target="_blank">
       <button class="downd bitrate-128"><span class="low-label">LQ</span><div class="title">Download Now</div><div class="size">(${post.size128 || ''})</div><span class="bitrate">${post.bitrate128 || '128'} kb/s</span></button>
     </a>` : '';
 
@@ -982,11 +1002,57 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
       }];
     }
 
+    // Force fresh fetch to avoid stale cache
     const existingFiles = await getAllTrackFiles();
-    const latestId = await getLatestId();
-    const results = await Promise.all(trackData.map((track, index) => 
-      processTrack(track, existingFiles, latestId + index)
-    ));
+    let latestId = await getLatestId(true);
+
+    // Validate all IDs before processing
+    const idAssignments = trackData.map((_, index) => latestId + index + 1);
+    const conflicts = idAssignments.filter(id => existingFiles.some(file => file.id === id));
+    if (conflicts.length > 0) {
+      // Retry with fresh data
+      await kv.del('latest_id');
+      await kv.del('github:track_files');
+      latestId = await getLatestId(true);
+      const newIdAssignments = trackData.map((_, index) => latestId + index + 1);
+      const newConflicts = newIdAssignments.filter(id => existingFiles.some(file => file.id === id));
+      if (newConflicts.length > 0) {
+        throw new Error(`ID conflicts detected: ${newConflicts.join(', ')}. Clear cache or check repository.`);
+      }
+      idAssignments.splice(0, idAssignments.length, ...newIdAssignments);
+    }
+
+    const results = [];
+    const errors = [];
+
+    // Process tracks sequentially to avoid GitHub API conflicts
+    for (let index = 0; index < trackData.length; index++) {
+      try {
+        const result = await processTrack(trackData[index], existingFiles, idAssignments[index]);
+        results.push(result);
+        // Update existingFiles to reflect new upload
+        existingFiles.push({
+          id: idAssignments[index],
+          slug: generatePermalink(trackData[index].artist, trackData[index].title),
+          file: `file/${idAssignments[index]}-${generatePermalink(trackData[index].artist, trackData[index].title)}.json`,
+          sha: null
+        });
+      } catch (error) {
+        errors.push({
+          track: `${trackData[index].artist} - ${trackData[index].title}`,
+          error: error.message
+        });
+        console.error(`Failed to process track ${trackData[index].artist} - ${trackData[index].title}:`, error.message);
+      }
+    }
+
+    if (results.length === 0) {
+      throw new Error(`No tracks uploaded successfully. Errors: ${errors.map(e => `${e.track}: ${e.error}`).join('; ')}`);
+    }
+
+    // Invalidate caches after successful uploads
+    await kv.del('github:track_files');
+    await kv.del('latest_id');
 
     res.redirect(results[0].permalink);
   } catch (error) {
