@@ -375,7 +375,7 @@ const parseBlogTags = (template, posts, options = {}) => {
   return result;
 };
 
-// Root route to list all posts
+// Root route to list all posts, sorted by newest first
 app.get('/', async (req, res) => {
   try {
     const files = await getAllTrackFiles();
@@ -383,7 +383,7 @@ app.get('/', async (req, res) => {
     for (const item of files) {
       try {
         const post = await getGitHubFile(item.file);
-        posts.push({ ...post, id: item.id });
+        posts.push({ ...post, id: item.id, created_at: post.created_at });
       } catch (error) {
         console.error(`Skipping file ${item.file} due to error: ${error.message}`);
         continue;
@@ -461,7 +461,7 @@ app.get('/', async (req, res) => {
   }
 });
 
-// Panel route
+// Panel route with checkbox delete feature
 app.get('/panel', async (req, res) => {
   try {
     const files = await getAllTrackFiles();
@@ -481,7 +481,7 @@ app.get('/panel', async (req, res) => {
 
     const trackList = parseBlogTags(`
       <div class="track-item">
-        <input type="checkbox" name="track-select" value="%id%" data-file="%file%" data-sha="%sha%">
+        <input type="checkbox" class="track-checkbox" data-file="%file%" data-sha="%sha%" data-id="%id%">
         <span>%var-artist% - %var-title% (%var-category%)</span>
         <button onclick="editTrack('%id%', '%var-artist%', '%var-title%', '%var-year%', '%var-album%', '%var-genre%', '%var-category%', '%var-duration%', '%var-size%', '%var-size128%', '%var-size192%', '%var-size320%', '%var-bitrate%', '%var-bitrate128%', '%var-bitrate192%', '%var-bitrate320%', '%var-thumb%', '%var-link%', '%var-link2%', '%var-url128%', '%var-url192%', '%var-url320%', '%var-lyricstimestamp%', '%var-lyrics%', '%var-name%', '%file%', '%sha%')">Edit</button>
         <button onclick="deleteTrack('%file%', '%sha%', '%id%')">Delete</button>
@@ -496,25 +496,26 @@ app.get('/panel', async (req, res) => {
         <title>Upload Track | Wallkpop</title>
         <style>
           body { font-family: 'Lora', Arial, sans-serif; margin: 20px; }
-          .form-container { max-width: 600px; margin: 0 auto; }
+          .form-container { max-width: 800px; margin: 0 auto; }
           .form-group { margin-bottom: 15px; }
           .form-group label { display: block; margin-bottom: 5px; }
           .form-group input, .form-group textarea { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
           .form-group textarea { height: 100px; }
-          .submit-btn, .reset-btn, .bulk-delete-btn { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 10px; }
-          .bulk-delete-btn { background: #dc3545; }
+          .submit-btn, .reset-btn, .delete-selected-btn { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 10px; }
+          .delete-selected-btn { background: #dc3545; }
           .submit-btn:hover, .reset-btn:hover { background: #0056b3; }
-          .bulk-delete-btn:hover { background: #c82333; }
+          .delete-selected-btn:hover { background: #c82333; }
           .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
           .tab { padding: 10px; cursor: pointer; border: 1px solid #ddd; border-radius: 4px; }
           .tab.active { background: #007bff; color: white; }
           .tab-content { display: none; }
           .tab-content.active { display: block; }
           .track-item { margin: 10px 0; padding: 10px; border: 1px solid #ddd; border-radius: 4px; display: flex; align-items: center; gap: 10px; }
-          .track-item input[type="checkbox"] { margin-right: 10px; }
           .track-item button { padding: 5px 10px; }
           .track-item button:nth-child(3) { background: #007bff; color: white; }
           .track-item button:nth-child(4) { background: #dc3545; color: white; }
+          .track-checkbox { margin-right: 10px; }
+          .select-all-container { margin-bottom: 10px; }
         </style>
         <script>
           function toggleTab(tabId) {
@@ -562,7 +563,7 @@ app.get('/panel', async (req, res) => {
                 const response = await fetch('/panel/delete', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ file: file, sha: sha })
+                  body: JSON.stringify({ file, sha })
                 });
                 const result = await response.json();
                 if (response.ok) {
@@ -577,26 +578,26 @@ app.get('/panel', async (req, res) => {
             }
           }
 
-          async function bulkDeleteTracks() {
-            const selectedTracks = document.querySelectorAll('input[name="track-select"]:checked');
-            if (selectedTracks.length === 0) {
-              alert('Please select at least one track to delete.');
+          async function deleteSelectedTracks() {
+            const checkboxes = document.querySelectorAll('.track-checkbox:checked');
+            if (checkboxes.length === 0) {
+              alert('No tracks selected for deletion');
               return;
             }
-            if (confirm(`Are you sure you want to delete ${selectedTracks.length} track(s)?`)) {
+            if (confirm(`Are you sure you want to delete ${checkboxes.length} track(s)?`)) {
+              const tracks = Array.from(checkboxes).map(cb => ({
+                file: cb.dataset.file,
+                sha: cb.dataset.sha
+              }));
               try {
-                const tracksToDelete = Array.from(selectedTracks).map(checkbox => ({
-                  file: checkbox.dataset.file,
-                  sha: checkbox.dataset.sha
-                }));
-                const response = await fetch('/panel/bulk-delete', {
+                const response = await fetch('/panel/delete-multiple', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ tracks: tracksToDelete })
+                  body: JSON.stringify({ tracks })
                 });
                 const result = await response.json();
                 if (response.ok) {
-                  alert('Tracks deleted successfully');
+                  alert('Selected tracks deleted successfully');
                   location.reload();
                 } else {
                   alert('Error deleting tracks: ' + result.error);
@@ -605,6 +606,12 @@ app.get('/panel', async (req, res) => {
                 alert('Error deleting tracks: ' + error.message);
               }
             }
+          }
+
+          function toggleSelectAll() {
+            const selectAllCheckbox = document.getElementById('select-all');
+            const checkboxes = document.querySelectorAll('.track-checkbox');
+            checkboxes.forEach(cb => cb.checked = selectAllCheckbox.checked);
           }
 
           async function resetForm() {
@@ -750,8 +757,9 @@ app.get('/panel', async (req, res) => {
             </form>
           </div>
           <h2>Existing Tracks</h2>
-          <div>
-            <button class="bulk-delete-btn" onclick="bulkDeleteTracks()">Delete Selected</button>
+          <div class="select-all-container">
+            <label><input type="checkbox" id="select-all" onclick="toggleSelectAll()"> Select All</label>
+            <button class="delete-selected-btn" onclick="deleteSelectedTracks()">Delete Selected</button>
           </div>
           <div id="track-list">
             ${trackList}
@@ -776,16 +784,18 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
       const fileContent = await fs.readFile(req.file.path, 'utf-8');
       try {
         trackData = JSON.parse(fileContent);
-        // Normalize year field to ensure it's a number
+        // Ensure year and id are numbers
         if (Array.isArray(trackData)) {
           trackData = trackData.map(track => ({
             ...track,
-            year: parseInt(track.year, 10)
+            year: parseInt(track.year, 10),
+            id: track.id ? parseInt(track.id, 10) : undefined
           }));
         } else {
           trackData = [{
             ...trackData,
-            year: parseInt(trackData.year, 10)
+            year: parseInt(trackData.year, 10),
+            id: trackData.id ? parseInt(trackData.id, 10) : undefined
           }];
         }
         const results = [];
@@ -952,61 +962,40 @@ async function processTrack(trackData) {
   return { id: newId, permalink: `/track/${newId}/${generatePermalink(trackData.artist, trackData.title)}` };
 }
 
-// Handle track deletion
+// Handle single track deletion
 app.post('/panel/delete', async (req, res) => {
   try {
-    let { file, sha } = req.body;
+    const { file, sha } = req.body;
     if (!file || !sha) {
       return res.status(400).json({ error: 'Missing file or sha' });
     }
 
-    // Normalize file path
-    file = file.trim();
-    if (!file.startsWith('file/')) {
-      file = `file/${file}`;
-    }
-    if (!file.endsWith('.json')) {
-      file = `${file}.json`;
-    }
-
-    // Verify file exists before attempting deletion
-    try {
-      await getGitHubFile(file);
-    } catch (error) {
-      return res.status(404).json({ error: `Track file ${file} not found` });
-    }
+    // Attempt to fetch file to verify existence
+    await getGitHubFile(file);
 
     await deleteGitHubFile(file, sha, `Delete track: ${file}`);
     res.json({ message: 'Track deleted successfully' });
   } catch (error) {
     console.error('Error deleting track:', error);
-    res.status(500).json({ error: `Error deleting track: ${error.response?.data?.message || error.message}` });
+    res.status(500).json({ error: `Error deleting track: ${error.message}` });
   }
 });
 
-// Handle bulk track deletion
-app.post('/panel/bulk-delete', async (req, res) => {
+// Handle multiple track deletion
+app.post('/panel/delete-multiple', async (req, res) => {
   try {
     const { tracks } = req.body;
     if (!tracks || !Array.isArray(tracks) || tracks.length === 0) {
-      return res.status(400).json({ error: 'No tracks selected for deletion' });
+      return res.status(400).json({ error: 'No tracks provided for deletion' });
     }
 
     const errors = [];
     for (const { file, sha } of tracks) {
       try {
-        let normalizedFile = file.trim();
-        if (!normalizedFile.startsWith('file/')) {
-          normalizedFile = `file/${normalizedFile}`;
-        }
-        if (!normalizedFile.endsWith('.json')) {
-          normalizedFile = `${normalizedFile}.json`;
-        }
-
-        // Verify file exists
-        await getGitHubFile(normalizedFile);
-        await deleteGitHubFile(normalizedFile, sha, `Delete track: ${normalizedFile}`);
+        await getGitHubFile(file);
+        await deleteGitHubFile(file, sha, `Delete track: ${file}`);
       } catch (error) {
+        console.error(`Error deleting track ${file}:`, error.message);
         errors.push(`Failed to delete ${file}: ${error.message}`);
       }
     }
@@ -1015,10 +1004,10 @@ app.post('/panel/bulk-delete', async (req, res) => {
       return res.status(500).json({ error: `Some tracks failed to delete: ${errors.join('; ')}` });
     }
 
-    res.json({ message: 'Tracks deleted successfully' });
+    res.json({ message: 'All selected tracks deleted successfully' });
   } catch (error) {
-    console.error('Error during bulk deletion:', error);
-    res.status(500).json({ error: `Error during bulk deletion: ${error.message}` });
+    console.error('Error deleting multiple tracks:', error);
+    res.status(500).json({ error: `Error deleting tracks: ${error.message}` });
   }
 });
 
