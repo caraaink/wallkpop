@@ -320,7 +320,7 @@ const getFooter = (pageUrl) => `
   </footer>
 `;
 
-// Parse [blog] tags with Google Drive link transformation
+// Parse [blog] tags with Google Drive link transformation and conditional HTML rendering
 const parseBlogTags = (template, posts, options = {}) => {
   const { limit = 10, noMessage = '<center>No File</center>', to = ':url-1(:to-file:):' } = options;
   if (!posts || posts.length === 0) return noMessage;
@@ -338,18 +338,21 @@ const parseBlogTags = (template, posts, options = {}) => {
       link2 = `https://www.googleapis.com/drive/v3/files/${match[1]}?alt=media&key=${GOOGLE_DRIVE_API_KEY}`;
     }
 
+    // Helper function to conditionally render HTML
+    const renderIfNotEmpty = (value, htmlTemplate) => value ? htmlTemplate.replace('%value%', value) : '';
+
     item = item.replace(/%id%/g, post.id)
       .replace(/%var-artist%/g, post.artist)
       .replace(/%var-title%/g, post.title)
       .replace(/%title%/g, `${post.artist} - ${post.title}`)
-      .replace(/%var-album%/g, post.album || 'Unknown')
-      .replace(/%var-genre%/g, post.genre || 'K-Pop')
-      .replace(/%var-category%/g, post.category || 'K-Pop')
-      .replace(/%var-duration%/g, post.duration || 'Unknown')
-      .replace(/%var-size%/g, post.size || 'Unknown')
-      .replace(/%var-size128%/g, post.size128 || post.size || 'Unknown')
-      .replace(/%var-size192%/g, post.size192 || post.size || 'Unknown')
-      .replace(/%var-size320%/g, post.size320 || post.size || 'Unknown')
+      .replace(/%var-album%/g, post.album || '')
+      .replace(/%var-genre%/g, post.genre || '')
+      .replace(/%var-category%/g, post.category || '')
+      .replace(/%var-duration%/g, post.duration || '')
+      .replace(/%var-size%/g, post.size || '')
+      .replace(/%var-size128%/g, post.size128 || '')
+      .replace(/%var-size192%/g, post.size192 || '')
+      .replace(/%var-size320%/g, post.size320 || '')
       .replace(/%var-bitrate%/g, post.bitrate || '192')
       .replace(/%var-bitrate128%/g, post.bitrate128 || '128')
       .replace(/%var-bitrate192%/g, post.bitrate192 || '192')
@@ -366,10 +369,21 @@ const parseBlogTags = (template, posts, options = {}) => {
       .replace(/%var-name%/g, post.name || `${post.artist} - ${post.title}`)
       .replace(/%sn%/g, index + 1)
       .replace(/%date=Y-m-d%/g, getFormattedDate('Y-m-d'))
-      .replace(/%text%/g, post.year || 'Unknown')
+      .replace(/%text%/g, post.year || '')
       .replace(/:url-1\(:to-file:\):/g, `/track/${post.id}/${permalink}`)
       .replace(/:page_url:/g, `https://wallkpop.vercel.app/track/${post.id}/${permalink}`)
       .replace(/:permalink:/g, permalink);
+
+    // Conditionally render HTML elements
+    item = item.replace(/<tr><td width="30%">Album<\/td><td>:<\/td><td>%var-album%<\/td><\/tr>/g, 
+      renderIfNotEmpty(post.album, '<tr><td width="30%">Album</td><td>:</td><td>%value%</td></tr>'))
+      .replace(/<tr><td>Genre<\/td><td>:<\/td><td>%var-genre%<\/td><\/tr>/g, 
+      renderIfNotEmpty(post.genre, '<tr><td>Genre</td><td>:</td><td>%value%</td></tr>'))
+      .replace(/<tr><td>Category<\/td><td>:<\/td><td>%var-category%<\/td><\/tr>/g, 
+      renderIfNotEmpty(post.category, '<tr><td>Category</td><td>:</td><td>%value%</td></tr>'))
+      .replace(/<tr><td>Duration<\/td><td>:<\/td><td>%var-duration% minutes<\/td><\/tr>/g, 
+      renderIfNotEmpty(post.duration, '<tr><td>Duration</td><td>:</td><td>%value% minutes</td></tr>'));
+
     result += item;
   });
   return result;
@@ -557,80 +571,86 @@ app.get('/panel', async (req, res) => {
             document.getElementById('submit-btn').textContent = 'Update Track';
           }
 
-          async function deleteTrack(file, sha, id) {
+          function deleteTrack(file, sha, id) {
             if (confirm('Are you sure you want to delete this track?')) {
-              try {
-                const response = await fetch('/panel/delete', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ file, sha })
-                });
-                const result = await response.json();
-                if (response.ok) {
+              fetch('/panel/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ file, sha })
+              })
+              .then(response => response.json())
+              .then(result => {
+                if (result.message) {
                   alert('Track deleted successfully');
                   location.reload();
                 } else {
                   alert('Error deleting track: ' + result.error);
                 }
-              } catch (error) {
+              })
+              .catch(error => {
                 alert('Error deleting track: ' + error.message);
-              }
+              });
             }
           }
 
-          async function deleteSelectedTracks() {
-            const checkboxes = document.querySelectorAll('.track-checkbox:checked');
+          function deleteSelectedTracks() {
+            var checkboxes = document.querySelectorAll('.track-checkbox:checked');
             if (checkboxes.length === 0) {
               alert('No tracks selected for deletion');
               return;
             }
-            if (confirm(`Are you sure you want to delete ${checkboxes.length} track(s)?`)) {
-              const tracks = Array.from(checkboxes).map(cb => ({
-                file: cb.dataset.file,
-                sha: cb.dataset.sha
-              }));
-              try {
-                const response = await fetch('/panel/delete-multiple', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ tracks })
-                });
-                const result = await response.json();
-                if (response.ok) {
+            if (confirm('Are you sure you want to delete ' + checkboxes.length + ' track(s)?')) {
+              var tracks = Array.from(checkboxes).map(function(cb) {
+                return {
+                  file: cb.dataset.file,
+                  sha: cb.dataset.sha
+                };
+              });
+              fetch('/panel/delete-multiple', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tracks })
+              })
+              .then(function(response) { return response.json(); })
+              .then(function(result) {
+                if (result.message) {
                   alert('Selected tracks deleted successfully');
                   location.reload();
                 } else {
                   alert('Error deleting tracks: ' + result.error);
                 }
-              } catch (error) {
+              })
+              .catch(function(error) {
                 alert('Error deleting tracks: ' + error.message);
-              }
+              });
             }
           }
 
           function toggleSelectAll() {
-            const selectAllCheckbox = document.getElementById('select-all');
-            const checkboxes = document.querySelectorAll('.track-checkbox');
-            checkboxes.forEach(cb => cb.checked = selectAllCheckbox.checked);
+            var selectAllCheckbox = document.getElementById('select-all');
+            var checkboxes = document.querySelectorAll('.track-checkbox');
+            checkboxes.forEach(function(cb) { cb.checked = selectAllCheckbox.checked; });
           }
 
-          async function resetForm() {
+          function resetForm() {
             document.getElementById('json-form').reset();
             document.getElementById('manual-form').reset();
             document.getElementById('var-id').value = '';
             document.getElementById('var-file').value = '';
             document.getElementById('var-sha').value = '';
             document.getElementById('submit-btn').textContent = 'Upload Track';
-            try {
-              const response = await fetch('/panel/reset-cache', { method: 'POST' });
-              if (response.ok) {
-                alert('Cache cleared successfully');
-              } else {
-                alert('Error clearing cache');
-              }
-            } catch (error) {
-              alert('Error clearing cache: ' + error.message);
-            }
+            fetch('/panel/reset-cache', { method: 'POST' })
+              .then(function(response) { return response.json(); })
+              .then(function(result) {
+                if (result.message) {
+                  alert('Cache cleared successfully');
+                } else {
+                  alert('Error clearing cache: ' + result.error);
+                }
+              })
+              .catch(function(error) {
+                alert('Error clearing cache: ' + error.message);
+              });
           }
         </script>
       </head>
@@ -784,18 +804,52 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
       const fileContent = await fs.readFile(req.file.path, 'utf-8');
       try {
         trackData = JSON.parse(fileContent);
-        // Ensure year and id are numbers
+        // Ensure year and id are numbers, and empty fields are ""
         if (Array.isArray(trackData)) {
           trackData = trackData.map(track => ({
             ...track,
             year: parseInt(track.year, 10),
-            id: track.id ? parseInt(track.id, 10) : undefined
+            id: track.id ? parseInt(track.id, 10) : undefined,
+            album: track.album || "",
+            genre: track.genre || "",
+            category: track.category || "",
+            duration: track.duration || "",
+            size: track.size || "",
+            size128: track.size128 || "",
+            size192: track.size192 || "",
+            size320: track.size320 || "",
+            thumb: track.thumb || "",
+            link: track.link || "",
+            link2: track.link2 || "",
+            url128: track.url128 || "",
+            url192: track.url192 || "",
+            url320: track.url320 || "",
+            lyricstimestamp: track.lyricstimestamp || "",
+            lyrics: track.lyrics || "",
+            name: track.name || `${track.artist} - ${track.title}`
           }));
         } else {
           trackData = [{
             ...trackData,
             year: parseInt(trackData.year, 10),
-            id: trackData.id ? parseInt(trackData.id, 10) : undefined
+            id: trackData.id ? parseInt(trackData.id, 10) : undefined,
+            album: trackData.album || "",
+            genre: trackData.genre || "",
+            category: trackData.category || "",
+            duration: trackData.duration || "",
+            size: trackData.size || "",
+            size128: trackData.size128 || "",
+            size192: trackData.size192 || "",
+            size320: trackData.size320 || "",
+            thumb: trackData.thumb || "",
+            link: trackData.link || "",
+            link2: trackData.link2 || "",
+            url128: trackData.url128 || "",
+            url192: trackData.url192 || "",
+            url320: trackData.url320 || "",
+            lyricstimestamp: trackData.lyricstimestamp || "",
+            lyrics: trackData.lyrics || "",
+            name: trackData.name || `${trackData.artist} - ${trackData.title}`
           }];
         }
         const results = [];
@@ -854,26 +908,26 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
         artist,
         title,
         year: yearNum,
-        album: album || null,
-        genre: genre || null,
-        category: category || null,
-        duration: duration || null,
-        size: size || null,
-        size128: size128 || null,
-        size192: size192 || null,
-        size320: size320 || null,
+        album: album || "",
+        genre: genre || "",
+        category: category || "",
+        duration: duration || "",
+        size: size || "",
+        size128: size128 || "",
+        size192: size192 || "",
+        size320: size320 || "",
         bitrate: bitrate || '192',
         bitrate128: bitrate128 || '128',
         bitrate192: bitrate192 || '192',
         bitrate320: bitrate320 || '320',
-        thumb: thumb || null,
-        link: link || null,
-        link2: link2 || null,
-        url128: url128 || null,
-        url192: url192 || null,
-        url320: url320 || null,
-        lyricstimestamp: lyricstimestamp || null,
-        lyrics: lyrics || null,
+        thumb: thumb || "",
+        link: link || "",
+        link2: link2 || "",
+        url128: url128 || "",
+        url192: url192 || "",
+        url320: url320 || "",
+        lyricstimestamp: lyricstimestamp || "",
+        lyrics: lyrics || "",
         name: name || `${artist} - ${title}`,
         id: id ? parseInt(id) : null,
         file,
@@ -926,26 +980,26 @@ async function processTrack(trackData) {
     artist: trackData.artist,
     title: trackData.title,
     year: yearNum,
-    album: trackData.album || null,
-    genre: trackData.genre || null,
-    category: trackData.category || null,
-    duration: trackData.duration || null,
-    size: trackData.size || null,
-    size128: trackData.size128 || null,
-    size192: trackData.size192 || null,
-    size320: trackData.size320 || null,
+    album: trackData.album || "",
+    genre: trackData.genre || "",
+    category: trackData.category || "",
+    duration: trackData.duration || "",
+    size: trackData.size || "",
+    size128: trackData.size128 || "",
+    size192: trackData.size192 || "",
+    size320: trackData.size320 || "",
     bitrate: trackData.bitrate || '192',
     bitrate128: trackData.bitrate128 || '128',
     bitrate192: trackData.bitrate192 || '192',
     bitrate320: trackData.bitrate320 || '320',
-    thumb: trackData.thumb || null,
-    link: trackData.link || null,
-    link2: trackData.link2 || null,
-    url128: trackData.url128 || null,
-    url192: trackData.url192 || null,
-    url320: trackData.url320 || null,
-    lyricstimestamp: trackData.lyricstimestamp || null,
-    lyrics: trackData.lyrics || null,
+    thumb: trackData.thumb || "",
+    link: trackData.link || "",
+    link2: trackData.link2 || "",
+    url128: trackData.url128 || "",
+    url192: trackData.url192 || "",
+    url320: trackData.url320 || "",
+    lyricstimestamp: trackData.lyricstimestamp || "",
+    lyrics: trackData.lyrics || "",
     name: trackData.name || `${trackData.artist} - ${trackData.title}`,
     created_at: new Date().toISOString()
   };
@@ -1289,26 +1343,26 @@ app.post('/api/post', async (req, res) => {
       artist,
       title,
       year: yearNum,
-      album: album || null,
-      genre: genre || null,
-      category: category || null,
-      duration: duration || null,
-      size: size || null,
-      size128: size128 || null,
-      size192: size192 || null,
-      size320: size320 || null,
+      album: album || "",
+      genre: genre || "",
+      category: category || "",
+      duration: duration || "",
+      size: size || "",
+      size128: size128 || "",
+      size192: size192 || "",
+      size320: size320 || "",
       bitrate: bitrate || '192',
       bitrate128: bitrate128 || '128',
       bitrate192: bitrate192 || '192',
       bitrate320: bitrate320 || '320',
-      thumb: thumb || null,
-      link: link || null,
-      link2: link2 || null,
-      url128: url128 || null,
-      url192: url192 || null,
-      url320: url320 || null,
-      lyricstimestamp: lyricstimestamp || null,
-      lyrics: lyrics || null,
+      thumb: thumb || "",
+      link: link || "",
+      link2: link2 || "",
+      url128: url128 || "",
+      url192: url192 || "",
+      url320: url320 || "",
+      lyricstimestamp: lyricstimestamp || "",
+      lyrics: lyrics || "",
       name: name || `${artist} - ${title}`,
       created_at: new Date().toISOString()
     };
