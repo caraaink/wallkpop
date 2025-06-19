@@ -769,8 +769,10 @@ app.get('/panel', async (req, res) => {
                   <label for="json-file">Upload JSON File</label>
                   <input type="file" id="json-file" name="json-file" accept=".json" required>
                 </div>
-                <button type="submit" class="submit-btn">Upload JSON</button>
-                <button type="button" class="reset-btn" onclick="resetForm()">Reset</button>
+                <div class="button-group">
+  <button type="submit" id="submit-btn" class="submit-btn">Upload Track</button>
+  <button type="button" class="reset-btn" onclick="resetForm()">Reset</button>
+</div>
               </form>
             </div>
             <div id="manual-tab-content" class="tab-content">
