@@ -1300,7 +1300,7 @@ app.get('/track/:id/:permalink', async (req, res) => {
         ${getHeader()}
         ${content}
         <div id="k">
-          <h3 class="title">Related Songs : <a href="/search?q=%var-artist%">More</a></h3>
+          <h3 class="title">Related Songs : <a href="/search?q=${post.artist}">More</a></h3>
           <div class="list">
             ${relatedContent}
           </div>
