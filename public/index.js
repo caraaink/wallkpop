@@ -277,13 +277,13 @@ const getHeader = (searchQuery = '') => `
         <ul>
           <li><a href="/">Home</a></li>
           <li><a href="https://metrolagu.wapkiz.mobi/">K-Pop</a></li>
-          <li><a href="/search/ost">OST</a></li>
+          <li><a href="/search?q=ost">OST</a></li>
           <li><a href="https://meownime.wapkizs.com/">Anime</a></li>
         </ul>
       </nav>
       <div id="search">
         <form action="/search" method="get">
-          <input class="inp-text" type="text" maxlength="100" placeholder="Enter Music Keywords..." autocomplete="off" value="${searchQuery}" name="to-q">
+          <input class="inp-text" type="text" maxlength="100" placeholder="Enter Music Keywords..." autocomplete="off" value="${searchQuery}" name="q">
           <input class="inp-btn" type="submit" value="Search">
         </form>
       </div>
@@ -338,41 +338,47 @@ const parseBlogTags = (template, posts, options = {}) => {
       link2 = `https://www.googleapis.com/drive/v3/files/${match[1]}?alt=media&key=${GOOGLE_DRIVE_API_KEY}`;
     }
 
+    // Escape special characters for JavaScript and HTML
+    const escapeForJS = (str) => (str || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r');
+    const escapeForHTML = (str) => (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
     // Helper function to conditionally render HTML
-    const renderIfNotEmpty = (value, htmlTemplate) => value ? htmlTemplate.replace('%value%', value) : '';
+    const renderIfNotEmpty = (value, htmlTemplate) => value ? htmlTemplate.replace('%value%', escapeForHTML(value)) : '';
 
     item = item.replace(/%id%/g, post.id)
-      .replace(/%var-artist%/g, post.artist)
-      .replace(/%var-title%/g, post.title)
-      .replace(/%title%/g, `${post.artist} - ${post.title}`)
-      .replace(/%var-album%/g, post.album || '')
-      .replace(/%var-genre%/g, post.genre || '')
-      .replace(/%var-category%/g, post.category || '')
-      .replace(/%var-duration%/g, post.duration || '')
-      .replace(/%var-size%/g, post.size || '')
-      .replace(/%var-size128%/g, post.size128 || '')
-      .replace(/%var-size192%/g, post.size192 || '')
-      .replace(/%var-size320%/g, post.size320 || '')
-      .replace(/%var-bitrate%/g, post.bitrate || '192')
-      .replace(/%var-bitrate128%/g, post.bitrate128 || '128')
-      .replace(/%var-bitrate192%/g, post.bitrate192 || '192')
-      .replace(/%var-bitrate320%/g, post.bitrate320 || '320')
-      .replace(/%var-thumb%/g, post.thumb || 'https://via.placeholder.com/150')
-      .replace(/%var-link%/g, post.link || '#')
-      .replace(/%var-link2%/g, link2)
-      .replace(/%var-url128%/g, post.url128 || post.link || '#')
-      .replace(/%var-url192%/g, post.url192 || post.link || '#')
-      .replace(/%var-url320%/g, post.url320 || post.link || '#')
-      .replace(/%hits%/g, '')
-      .replace(/%var-lyricstimestamp%/g, (post.lyricstimestamp || '').replace(/"/g, '&quot;'))
-      .replace(/%var-lyrics%/g, (post.lyrics || '').replace(/"/g, '&quot;'))
-      .replace(/%var-name%/g, post.name || `${post.artist} - ${post.title}`)
+      .replace(/%var-artist%/g, escapeForHTML(post.artist))
+      .replace(/%var-title%/g, escapeForHTML(post.title))
+      .replace(/%title%/g, escapeForHTML(`${post.artist} - ${post.title}`))
+      .replace(/%var-album%/g, escapeForHTML(post.album || ''))
+      .replace(/%var-genre%/g, escapeForHTML(post.genre || ''))
+      .replace(/%var-category%/g, escapeForHTML(post.category || ''))
+      .replace(/%var-duration%/g, escapeForHTML(post.duration || ''))
+      .replace(/%var-size%/g, escapeForHTML(post.size || ''))
+      .replace(/%var-size128%/g, escapeForHTML(post.size128 || ''))
+      .replace(/%var-size192%/g, escapeForHTML(post.size192 || ''))
+      .replace(/%var-size320%/g, escapeForHTML(post.size320 || ''))
+      .replace(/%var-bitrate%/g, escapeForHTML(post.bitrate || '192'))
+      .replace(/%var-bitrate128%/g, escapeForHTML(post.bitrate128 || '128'))
+      .replace(/%var-bitrate192%/g, escapeForHTML(post.bitrate192 || '192'))
+      .replace(/%var-bitrate320%/g, escapeForHTML(post.bitrate320 || '320'))
+      .replace(/%var-thumb%/g, escapeForHTML(post.thumb || 'https://via.placeholder.com/150'))
+      .replace(/%var-link%/g, escapeForHTML(post.link || '#'))
+      .replace(/%var-link2%/g, escapeForHTML(link2))
+      .replace(/%var-url128%/g, escapeForHTML(post.url128 || post.link || '#'))
+      .replace(/%var-url192%/g, escapeForHTML(post.url192 || post.link || '#'))
+      .replace(/%var-url320%/g, escapeForHTML(post.url320 || post.link || '#'))
+      .replace(/%hits%/g, escapeForHTML(post.hits || '0'))
+      .replace(/%var-lyricstimestamp%/g, escapeForJS(post.lyricstimestamp || ''))
+      .replace(/%var-lyrics%/g, post.lyrics || '')
+      .replace(/%var-name%/g, escapeForHTML(post.name || `${post.artist} - ${post.title}`))
       .replace(/%sn%/g, index + 1)
       .replace(/%date=Y-m-d%/g, getFormattedDate('Y-m-d'))
       .replace(/%text%/g, post.year || '')
       .replace(/:url-1\(:to-file:\):/g, `/track/${post.id}/${permalink}`)
       .replace(/:page_url:/g, `https://wallkpop.vercel.app/track/${post.id}/${permalink}`)
-      .replace(/:permalink:/g, permalink);
+      .replace(/:permalink:/g, permalink)
+      .replace(/%file%/g, escapeForHTML(post.file || ''))
+      .replace(/%sha%/g, escapeForHTML(post.sha || ''));
 
     // Conditionally render HTML elements
     item = item.replace(/<tr><td width="30%">Album<\/td><td>:<\/td><td>%var-album%<\/td><\/tr>/g, 
@@ -537,6 +543,7 @@ app.get('/panel', async (req, res) => {
             document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
             document.getElementById(tabId).classList.add('active');
             document.getElementById(tabId + '-content').classList.add('active');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
           }
 
           function editTrack(id, artist, title, year, album, genre, category, duration, size, size128, size192, size320, bitrate, bitrate128, bitrate192, bitrate320, thumb, link, link2, url128, url192, url320, lyricstimestamp, lyrics, name, file, sha) {
@@ -569,22 +576,27 @@ app.get('/panel', async (req, res) => {
             document.getElementById('var-file').value = file;
             document.getElementById('var-sha').value = sha;
             document.getElementById('submit-btn').textContent = 'Update Track';
+            window.scrollTo({ top: document.getElementById('manual-tab-content').offsetTop, behavior: 'smooth' });
           }
 
           function deleteTrack(file, sha, id) {
+            if (!file || !sha) {
+              alert('Invalid file or SHA');
+              return;
+            }
             if (confirm('Are you sure you want to delete this track?')) {
               fetch('/panel/delete', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ file: file, sha: sha })
+                body: JSON.stringify({ file, sha })
               })
-              .then(function(response) {
+              .then(response => {
                 if (!response.ok) {
                   throw new Error('Network response was not ok: ' + response.statusText);
                 }
                 return response.json();
               })
-              .then(function(result) {
+              .then(result => {
                 if (result.message) {
                   alert('Track deleted successfully');
                   window.location.reload();
@@ -592,7 +604,7 @@ app.get('/panel', async (req, res) => {
                   alert('Error deleting track: ' + (result.error || 'Unknown error'));
                 }
               })
-              .catch(function(error) {
+              .catch(error => {
                 console.error('Delete error:', error);
                 alert('Error deleting track: ' + error.message);
               });
@@ -600,30 +612,28 @@ app.get('/panel', async (req, res) => {
           }
 
           function deleteSelectedTracks() {
-            var checkboxes = document.querySelectorAll('.track-checkbox:checked');
+            const checkboxes = document.querySelectorAll('.track-checkbox:checked');
             if (checkboxes.length === 0) {
               alert('No tracks selected for deletion');
               return;
             }
-            if (confirm('Are you sure you want to delete ' + checkboxes.length + ' track(s)?')) {
-              var tracks = Array.from(checkboxes).map(function(cb) {
-                return {
-                  file: cb.dataset.file,
-                  sha: cb.dataset.sha
-                };
-              });
+            if (confirm(`Are you sure you want to delete ${checkboxes.length} track(s)?`)) {
+              const tracks = Array.from(checkboxes).map(cb => ({
+                file: cb.dataset.file,
+                sha: cb.dataset.sha
+              }));
               fetch('/panel/delete-multiple', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ tracks: tracks })
+                body: JSON.stringify({ tracks })
               })
-              .then(function(response) {
+              .then(response => {
                 if (!response.ok) {
                   throw new Error('Network response was not ok: ' + response.statusText);
                 }
                 return response.json();
               })
-              .then(function(result) {
+              .then(result => {
                 if (result.message) {
                   alert('Selected tracks deleted successfully');
                   window.location.reload();
@@ -631,7 +641,7 @@ app.get('/panel', async (req, res) => {
                   alert('Error deleting tracks: ' + (result.error || 'Unknown error'));
                 }
               })
-              .catch(function(error) {
+              .catch(error => {
                 console.error('Delete multiple error:', error);
                 alert('Error deleting tracks: ' + error.message);
               });
@@ -639,9 +649,9 @@ app.get('/panel', async (req, res) => {
           }
 
           function toggleSelectAll() {
-            var selectAllCheckbox = document.getElementById('select-all');
-            var checkboxes = document.querySelectorAll('.track-checkbox');
-            checkboxes.forEach(function(cb) { cb.checked = selectAllCheckbox.checked; });
+            const selectAllCheckbox = document.getElementById('select-all');
+            const checkboxes = document.querySelectorAll('.track-checkbox');
+            checkboxes.forEach(cb => { cb.checked = selectAllCheckbox.checked; });
           }
 
           function resetForm() {
@@ -655,20 +665,20 @@ app.get('/panel', async (req, res) => {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' }
             })
-              .then(function(response) {
+              .then(response => {
                 if (!response.ok) {
                   throw new Error('Network response was not ok');
                 }
                 return response.json();
               })
-              .then(function(result) {
+              .then(result => {
                 if (result.message) {
                   alert('Cache cleared successfully');
                 } else {
                   alert('Error clearing cache: ' + (result.error || 'Unknown error'));
                 }
               })
-              .catch(function(error) {
+              .catch(error => {
                 console.error('Reset cache error:', error);
                 alert('Error clearing cache: ' + error.message);
               });
@@ -825,7 +835,7 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
       const fileContent = await fs.readFile(req.file.path, 'utf-8');
       try {
         trackData = JSON.parse(fileContent);
-        // Ensure year and id are numbers, and empty fields are ""
+        // Ensure year is a number, and empty fields are ""
         if (Array.isArray(trackData)) {
           trackData = trackData.map(track => ({
             ...track,
@@ -851,7 +861,8 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
             url320: track.url320 || "",
             lyricstimestamp: track.lyricstimestamp || "",
             lyrics: track.lyrics || "",
-            name: track.name || `${track.artist} - ${track.title}`
+            name: track.name || `${track.artist} - ${track.title}`,
+            created_at: track.created_at || new Date().toISOString()
           }));
         } else {
           trackData = [{
@@ -878,7 +889,8 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
             url320: trackData.url320 || "",
             lyricstimestamp: trackData.lyricstimestamp || "",
             lyrics: trackData.lyrics || "",
-            name: trackData.name || `${trackData.artist} - ${trackData.title}`
+            name: trackData.name || `${trackData.artist} - ${trackData.title}`,
+            created_at: trackData.created_at || new Date().toISOString()
           }];
         }
         const results = [];
@@ -960,7 +972,8 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
         name: name || `${artist} - ${title}`,
         id: id ? parseInt(id, 10) : undefined,
         file,
-        sha
+        sha,
+        created_at: new Date().toISOString()
       }];
     }
 
@@ -1182,7 +1195,7 @@ app.get('/track/:id/:permalink', async (req, res) => {
             </table>
           </div>
           <div class="container">
-            <h2><center>â��â�� Download MP3 ~%var-bitrate% kb/s â��â��</center></h2>
+            <h2><center>🎵 Download MP3 ~%var-bitrate% kb/s 🎵</center></h2>
           </div>
           <audio id="player" controls>
             <source src="%var-link2%" type="audio/mp3">
@@ -1214,19 +1227,19 @@ app.get('/track/:id/:permalink', async (req, res) => {
                 <span itemprop="name">Home</span>
               </a>
               <meta itemprop="position" content="1">
-            </span> Â»
+            </span> »
             <span itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
               <a itemtype="https://schema.org/Thing" itemprop="item" href="/site-allmusic.html">
                 <span itemprop="name">K-Pop</span>
               </a>
               <meta itemprop="position" content="2">
-            </span> Â»
+            </span> »
             <span itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
-              <a itemtype="https://schema.org/Thing" itemprop="item" href="/search/%var-artist%">
+              <a itemtype="https://schema.org/Thing" itemprop="item" href="/search?q=%var-artist%">
                 <span itemprop="name">%var-artist%</span>
               </a>
               <meta itemprop="position" content="3">
-            </span> Â»
+            </span> »
             <span itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
               <span itemprop="name">%var-title%</span>
               <meta itemprop="position" content="4">
@@ -1234,7 +1247,7 @@ app.get('/track/:id/:permalink', async (req, res) => {
           </div>
           <br>
           <div class="note">
-           %var-lyrics%
+            %var-lyrics%
           </div>
         </div>
       </div>`, [post], { noMessage: 'No Post' });
@@ -1266,9 +1279,12 @@ app.get('/track/:id/:permalink', async (req, res) => {
 });
 
 // Search page
-app.get('/search/:query', async (req, res) => {
+app.get('/search', async (req, res) => {
   try {
-    const query = req.params.query.toLowerCase();
+    const query = req.query.q ? req.query.q.toLowerCase() : '';
+    if (!query) {
+      return res.redirect('/');
+    }
     const files = await getAllTrackFiles();
     const posts = [];
     for (const item of files) {
@@ -1322,12 +1338,12 @@ app.get('/search/:query', async (req, res) => {
       <!DOCTYPE html>
       <html>
       <head>
-        ${getMetaHeader(null, `https://wallkpop.vercel.app/search/${req.params.query}`)}
+        ${getMetaHeader(null, `https://wallkpop.vercel.app/search?q=${encodeURIComponent(req.query.q)}`)}
       </head>
       <body>
-        ${getHeader(req.params.query)}
+        ${getHeader(req.query.q)}
         <div id="content">
-          <h1>Search Results for "${req.params.query}"</h1>
+          <h1>Search Results for "${req.query.q}"</h1>
           <div class="album">
             ${searchResults}
             <div class="paging">
@@ -1335,7 +1351,7 @@ app.get('/search/:query', async (req, res) => {
             </div>
           </div>
         </div>
-        ${getFooter(`https://wallkpop.vercel.app/search/${req.params.query}`)}
+        ${getFooter(`https://wallkpop.vercel.app/search?q=${encodeURIComponent(req.query.q)}`)}
       </body>
       </html>
     `;
