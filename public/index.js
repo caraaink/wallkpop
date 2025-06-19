@@ -10,7 +10,8 @@ const fs = require('fs').promises;
 const app = express();
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
-app.use(express.static('public'));
+// Ensure static files are served from 'public' folder
+app.use(express.static(path.join(__dirname, 'public')));
 
 const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 const repoOwner = 'wallkpop';
@@ -605,10 +606,25 @@ app.get('/page/:page', async (req, res) => {
 app.get('/sitemap.xml', async (req, res) => {
   try {
     const files = await getAllTrackFiles();
+    const posts = [];
+    for (const item of files) {
+      try {
+        const post = await getGitHubFile(item.file);
+        posts.push({ ...post, id: item.id, file: item.file, created_at: post.created_at });
+      } catch (error) {
+        console.error(`Skipping sitemap file ${item.file}: ${error.message}`);
+        continue;
+      }
+    }
+
+    // Sort posts by created_at descending (newest first) and limit to 500
+    posts.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    const limitedPosts = posts.slice(0, 500);
+
     const postsPerPage = 40;
-    const totalPosts = files.length;
+    const totalPosts = posts.length;
     const totalPages = Math.ceil(totalPosts / postsPerPage);
-    
+
     let sitemap = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
@@ -618,22 +634,16 @@ app.get('/sitemap.xml', async (req, res) => {
     <priority>1.0</priority>
   </url>`;
 
-    // Add track pages
-    for (const item of files) {
-      try {
-        const post = await getGitHubFile(item.file);
-        const permalink = generatePermalink(post.artist, post.title);
-        sitemap += `
+    // Add track pages (limited to 500)
+    for (const post of limitedPosts) {
+      const permalink = generatePermalink(post.artist, post.title);
+      sitemap += `
   <url>
-    <loc>https://wallkpop.vercel.app/track/${item.id}/${permalink}</loc>
+    <loc>https://wallkpop.vercel.app/track/${post.id}/${permalink}</loc>
     <lastmod>${post.created_at ? new Date(post.created_at).toISOString().split('T')[0] : getFormattedDate('Y-m-d')}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>`;
-      } catch (error) {
-        console.error(`Skipping sitemap file ${item.file}: ${error.message}`);
-        continue;
-      }
     }
 
     // Add pagination pages
@@ -1233,7 +1243,7 @@ app.get('/track/:id/:permalink', async (req, res) => {
             </table>
           </div>
           <div class="container">
-            <h2><center>â†“â†“ Download MP3 ~%var-bitrate% kb/s â†“â†“</center></h2>
+            <h2><center>↓↓ Download MP3 ~%var-bitrate% kb/s ↓↓</center></h2>
           </div>
           <audio id="player" controls>
             <source src="%var-link2%" type="audio/mp3">
@@ -1255,19 +1265,19 @@ app.get('/track/:id/:permalink', async (req, res) => {
                 <span itemprop="name">Home</span>
               </a>
               <meta itemprop="position" content="1">
-            </span> Â» 
+            </span> » 
             <span itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
-              <a itemtype="https://schema.org/Thing" itemprop="item" href="/site-allmusic.html">
-                <span itemprop="name">K-Pop</span>
+              <a itemtype="https://schema.org/Thing" itemprop="item" href="/search?q=%var-category%">
+                <span itemprop="name">%var-category%</span>
               </a>
               <meta itemprop="position" content="2">
-            </span> Â» 
+            </span> » 
             <span itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
               <a itemtype="https://schema.org/Thing" itemprop="item" href="/search?q=%var-artist%">
                 <span itemprop="name">%var-artist%</span>
               </a>
               <meta itemprop="position" content="3">
-            </span> Â» 
+            </span> » 
             <span itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
               <span itemprop="name">%var-title%</span>
               <meta itemprop="position" content="4">
@@ -1290,7 +1300,7 @@ app.get('/track/:id/:permalink', async (req, res) => {
         ${getHeader()}
         ${content}
         <div id="k">
-          <h3 class="title">Related Songs : <a href="/search?q=%var-title%">More</a></h3>
+          <h3 class="title">Related Songs : <a href="/search?q=%var-artist%">More</a></h3>
           <div class="list">
             ${relatedContent}
           </div>
