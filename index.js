@@ -10,7 +10,6 @@ const fs = require('fs').promises;
 const app = express();
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
-// Ensure static files are served from 'public' folder
 app.use(express.static(path.join(__dirname, 'public')));
 
 const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
@@ -18,6 +17,7 @@ const repoOwner = 'wallkpop';
 const repoName = 'database';
 const branch = 'main';
 const GOOGLE_DRIVE_API_KEY = 'AIzaSyD00uLzmHdXXCQzlA2ibiYg2bzdbl89JOM';
+const PANEL_PASSWORD = 'eren19';
 
 const upload = multer({
   dest: '/tmp/uploads/',
@@ -237,11 +237,11 @@ const getMetaHeader = (post = null, pageUrl = 'https://wallkpop.vercel.app/', qu
     <meta name="robots" content="index, follow">
     <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico">
     <link rel="canonical" href="${pageUrl}">
-    <link rel="stylesheet" href="https://rawcdn.githack.com/caraaink/otakudesu/1ff200e0bc05d43443b4944b46532c4b4c3cc275/plyr.css" />
-    <script src="https://rawcdn.githack.com/caraaink/otakudesu/1ff200e0bc05d43443b4944b46532c4b4c3cc275/plyr.polyfilled.js"></script>
+    <link rel="stylesheet" type="text/css" href="/style.css"/>
+    <link rel="stylesheet" href="/plyr.css" />
+    <script src="/plyr.polyfilled.js"></script>
     <link href="https://stackpath.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet" integrity="sha384-wvfXpqpZZVQGK6TAh5PVlGOfQNHSoD2xbE+QkPxCAFlNEevoEH3Sl0sibVcOQVnN" crossorigin="anonymous">
     <link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" type="text/css" href="/style.css"/>
     <meta name="google-site-verification" content="9e9RaAsVDPAkag708Q30S8xSw8_qIMm87FJBoJWzink" />
     <meta name="yandex-verification" content="b507670596647101" />
     ${og}
@@ -346,7 +346,6 @@ const parseBlogTags = (template, posts, options = {}) => {
   const { limit = 40, noMessage = '<center>No File</center>', to = ':url-1(:to-file:):' } = options;
   if (!posts || posts.length === 0) return noMessage;
 
-  // Function to remove http:// or https:// from URLs
   const stripProtocol = (url) => {
     if (!url) return '';
     return url.replace(/^https?:\/\//, '//');
@@ -375,7 +374,6 @@ const parseBlogTags = (template, posts, options = {}) => {
                .replace(/\t/g, '\\t');
     };
 
-    // Define download link templates with protocol stripped
     const linkOriginal = `<a href="https://meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(stripProtocol(post.thumb || ''))}&to-size=${encodeURIComponent(post.size || '')}&to-link2=${encodeURIComponent(stripProtocol(post.link2 || ''))}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(stripProtocol(post.link || ''))}&to-sizeori=${encodeURIComponent(post.size || '')}" target="_blank">
       <button class="downd bitrate-192"><span class="medium-label">MQ</span><div class="title">Download Now</div><div class="size">(${post.size || ''})</div><span class="bitrate">${post.bitrate || '192'} kb/s</span></button>
     </a>`;
@@ -392,7 +390,6 @@ const parseBlogTags = (template, posts, options = {}) => {
       <button class="downd bitrate-128"><span class="low-label">LQ</span><div class="title">Download Now</div><div class="size">(${post.size128 || ''})</div><span class="bitrate">${post.bitrate128 || '128'} kb/s</span></button>
     </a>` : '';
 
-    // Combine download buttons
     let downloadButtons = link320 || link192 || link128
       ? `<div class="download-buttons">${link320}${link192}${link128}</div>`
       : `<div class="download-buttons">${linkOriginal}</div>`;
@@ -625,7 +622,6 @@ app.get('/sitemap.xml', async (req, res) => {
       }
     }
 
-    // Sort posts by created_at descending (newest first) and limit to 500
     posts.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
     const limitedPosts = posts.slice(0, 500);
 
@@ -642,7 +638,6 @@ app.get('/sitemap.xml', async (req, res) => {
     <priority>1.0</priority>
   </url>`;
 
-    // Add track pages (limited to 500)
     for (const post of limitedPosts) {
       const permalink = generatePermalink(post.artist, post.title);
       sitemap += `
@@ -654,7 +649,6 @@ app.get('/sitemap.xml', async (req, res) => {
   </url>`;
     }
 
-    // Add pagination pages
     for (let page = 1; page <= totalPages; page++) {
       sitemap += `
   <url>
@@ -691,51 +685,200 @@ Sitemap: https://wallkpop.vercel.app/sitemap.xml
 
 app.get('/panel', async (req, res) => {
   try {
-    const files = await getAllTrackFiles();
-    const posts = [];
-    for (const item of files) {
-      try {
-        const post = await getGitHubFile(item.file);
-        posts.push({ ...post, id: item.id, file: item.file, sha: item.sha });
-      } catch (error) {
-        console.error(`Skipping file ${item.file}: ${error.message}`);
-        continue;
-      }
-    }
-
-    posts.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-
-    const trackList = parseBlogTags(`
-      <div class="track-item">
-        <span>%var-artist% - %var-title% (%var-category%)</span>
-        <button onclick="editTrack('%id%', '%var-artist%', '%var-title%', '%text%', '%var-album%', '%var-genre%', '%var-category%', '%var-duration%', '%var-size%', '%var-size128%', '%var-size192%', '%var-size320%', '%var-bitrate%', '%var-bitrate128%', '%var-bitrate192%', '%var-bitrate320%', '%var-thumb%', '%var-link%', '%var-link2%', '%var-url128%', '%var-url192%', '%var-url320%', '%var-lyricstimestamp%', '%var-lyrics%', '%var-name%', '%file%', '%sha%')">Edit</button>
-      </div>`, posts, { limit: 100 });
-
-    const html = `
+    const loginPage = `
       <!DOCTYPE html>
       <html lang="en">
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Upload Track | Wallkpop</title>
+        <title>Panel Login | Wallkpop</title>
         <style>
-          body { font-family: 'Lora', Arial, sans-serif; margin: 0; padding: 0; }
-          header { text-align: center; padding: 20px; background: #f4f4f4; }
-          header h1 a { color: #333; text-decoration: none; }
-          header h2 { color: #666; font-size: 1.2rem; }
-          nav ul { list-style: none; padding: 0; display: flex; justify-content: center; gap: 20px; }
-          nav ul li a { color: #007bff; text-decoration: none; }
-          #search { margin: 20px auto; max-width: 600px; }
-          #search form { display: flex; gap: 10px; }
-          .inp-text { padding: 8px; width: 80%; border: 1px solid #ddd; border-radius: 4px; }
-          .inp-btn { padding: 8px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
-          .inp-btn:hover { background: #0056b3; }
-          footer { text-align: center; padding: 20px; background: #f4f4f4; margin-top: 20px; }
-          .footer .center { margin: 10px 0; }
-          .kiri, .kanan { display: inline-block; margin: 0 10px; }
-          .album-list table { width: 100%; border-collapse: collapse; }
-          .album-list td { padding: 5px; vertical-align: top; }
-          .form-container { max-width: 800px; margin: 0 auto; }
+          body { font-family: 'Lora', Arial, sans-serif; margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background: #f4f4f4; }
+          .login-container { max-width: 400px; padding: 20px; background: white; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+          .form-group { margin-bottom: 15px; }
+          .form-group label { display: block; margin-bottom: 5px; }
+          .form-group input { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+          .submit-btn { width: 100%; padding: 10px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+          .submit-btn:hover { background: #0056b3; }
+          .error { color: red; text-align: center; margin-top: 10px; }
+        </style>
+        <script>
+          function checkLogin() {
+            const loginData = localStorage.getItem('panelLogin');
+            if (loginData) {
+              const { timestamp } = JSON.parse(loginData);
+              const now = new Date().getTime();
+              const twentyFourHours = 24 * 60 * 60 * 1000;
+              if (now - timestamp < twentyFourHours) {
+                document.getElementById('login-form').style.display = 'none';
+                document.getElementById('panel-content').style.display = 'block';
+                return;
+              } else {
+                localStorage.removeItem('panelLogin');
+              }
+            }
+          }
+
+          function handleLogin(event) {
+            event.preventDefault();
+            const password = document.getElementById('password').value;
+            fetch('/panel/login', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ password })
+            })
+            .then(response => response.json())
+            .then(data => {
+              if (data.success) {
+                localStorage.setItem('panelLogin', JSON.stringify({ timestamp: new Date().getTime() }));
+                document.getElementById('login-form').style.display = 'none';
+                document.getElementById('panel-content').style.display = 'block';
+              } else {
+                document.getElementById('error').textContent = 'Invalid password';
+              }
+            })
+            .catch(error => {
+              document.getElementById('error').textContent = 'Error logging in';
+              console.error('Login error:', error);
+            });
+          }
+
+          window.onload = checkLogin;
+        </script>
+      </head>
+      <body>
+        <div class="login-container">
+          <h2 style="text-align: center;">Admin Panel Login</h2>
+          <form id="login-form" onsubmit="handleLogin(event)">
+            <div class="form-group">
+              <label for="password">Password</label>
+              <input type="password" id="password" name="password" required>
+            </div>
+            <button type="submit" class="submit-btn">Login</button>
+            <div id="error" class="error"></div>
+          </form>
+          <div id="panel-content" style="display: none;">
+            <h1>Upload Track</h1>
+            <div class="tabs">
+              <div class="tab active" id="json-tab" onclick="toggleTab('json-tab')">Upload JSON</div>
+              <div class="tab" id="manual-tab" onclick="toggleTab('manual-tab')">Manual Input</div>
+            </div>
+            <div id="json-tab-content" class="tab-content active">
+              <form id="json-form" action="/panel" method="POST" enctype="multipart/form-data">
+                <div class="form-group">
+                  <label for="json-file">Upload JSON File</label>
+                  <input type="file" id="json-file" name="json-file" accept=".json" required>
+                </div>
+                <button type="submit" class="submit-btn">Upload JSON</button>
+                <button type="button" class="reset-btn" onclick="resetForm()">Reset</button>
+              </form>
+            </div>
+            <div id="manual-tab-content" class="tab-content">
+              <form id="manual-form" action="/panel" method="POST">
+                <div class="form-group">
+                  <label for="var-artist">Artist</label>
+                  <input type="text" id="var-artist" name="var-artist" required>
+                </div>
+                <div class="form-group">
+                  <label for="var-title">Title</label>
+                  <input type="text" id="var-title" name="var-title" required>
+                </div>
+                <div class="form-group">
+                  <label for="var-year">Year</label>
+                  <input type="number" id="var-year" name="var-year">
+                </div>
+                <div class="form-group">
+                  <label for="var-album">Album</label>
+                  <input type="text" id="var-album" name="var-album">
+                </div>
+                <div class="form-group">
+                  <label for="var-genre">Genre</label>
+                  <input type="text" id="var-genre" name="var-genre">
+                </div>
+                <div class="form-group">
+                  <label for="var-category">Category</label>
+                  <input type="text" id="var-category" name="var-category">
+                </div>
+                <div class="form-group">
+                  <label for="var-duration">Duration (e.g., 3:45)</label>
+                  <input type="text" id="var-duration" name="var-duration">
+                </div>
+                <div class="form-group">
+                  <label for="var-size">Size (MB)</label>
+                  <input type="text" id="var-size" name="var-size">
+                </div>
+                <div class="form-group">
+                  <label for="var-size128">Size 128kbps (MB)</label>
+                  <input type="text" id="var-size128" name="var-size128">
+                </div>
+                <div class="form-group">
+                  <label for="var-size192">Size 192kbps (MB)</label>
+                  <input type="text" id="var-size192" name="var-size192">
+                </div>
+                <div class="form-group">
+                  <label for="var-size320">Size 320kbps (MB)</label>
+                  <input type="text" id="var-size320" name="var-size320">
+                </div>
+                <div class="form-group">
+                  <label for="var-bitrate">Bitrate (kbps)</label>
+                  <input type="text" id="var-bitrate" name="var-bitrate" value="192">
+                </div>
+                <div class="form-group">
+                  <label for="var-bitrate128">Bitrate 128kbps</label>
+                  <input type="text" id="var-bitrate128" name="var-bitrate128" value="128">
+                </div>
+                <div class="form-group">
+                  <label for="var-bitrate192">Bitrate 192kbps</label>
+                  <input type="text" id="var-bitrate192" name="var-bitrate192" value="192">
+                </div>
+                <div class="form-group">
+                  <label for="var-bitrate320">Bitrate 320kbps</label>
+                  <input type="text" id="var-bitrate320" name="var-bitrate320" value="320">
+                </div>
+                <div class="form-group">
+                  <label for="var-thumb">Thumbnail URL</label>
+                  <input type="text" id="var-thumb" name="var-thumb">
+                </div>
+                <div class="form-group">
+                  <label for="var-link">Download Link</label>
+                  <input type="text" id="var-link" name="var-link">
+                </div>
+                <div class="form-group">
+                  <label for="var-link2">Alternative Download Link</label>
+                  <input type="text" id="var-link2" name="var-link2">
+                </div>
+                <div class="form-group">
+                  <label for="var-url128">Download URL (128kbps)</label>
+                  <input type="text" id="var-url128" name="var-url128">
+                </div>
+                <div class="form-group">
+                  <label for="var-url192">Download URL (192kbps)</label>
+                  <input type="text" id="var-url192" name="var-url192">
+                </div>
+                <div class="form-group">
+                  <label for="var-url320">Download URL (320kbps)</label>
+                  <input type="text" id="var-url320" name="var-url320">
+                </div>
+                <div class="form-group">
+                  <label for="var-lyricstimestamp">Lyrics Timestamp</label>
+                  <textarea id="var-lyricstimestamp" name="var-lyricstimestamp"></textarea>
+                </div>
+                <div class="form-group">
+                  <label for="var-lyrics">Lyrics</label>
+                  <textarea id="var-lyrics" name="var-lyrics"></textarea>
+                </div>
+                <div class="form-group">
+                  <label for="var-name">File Name</label>
+                  <input type="text" id="var-name" name="var-name">
+                </div>
+                <button type="submit" id="submit-btn" class="submit-btn">Upload Track</button>
+                <button type="button" class="reset-btn" onclick="resetForm()">Reset</button>
+              </form>
+            </div>
+          </div>
+        </div>
+        <style>
+          .form-container { max-width: 800px; margin: 20px auto; }
           .form-group { margin-bottom: 15px; }
           .form-group label { display: block; margin-bottom: 5px; }
           .form-group input, .form-group textarea { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
@@ -747,8 +890,6 @@ app.get('/panel', async (req, res) => {
           .tab.active { background: #007bff; color: white; }
           .tab-content { display: none; }
           .tab-content.active { display: block; }
-          .track-item { margin: 10px 0; padding: 10px; border: 1px solid #ddd; border-radius: 4px; display: flex; align-items: center; gap: 10px; }
-          .track-item button { padding: 5px 10px; background: #007bff; color: white; }
         </style>
         <script>
           function toggleTab(tabId) {
@@ -759,45 +900,9 @@ app.get('/panel', async (req, res) => {
             document.getElementById('manual-form').scrollIntoView({ behavior: 'smooth' });
           }
 
-          function editTrack(id, artist, title, year, album, genre, category, duration, size, size128, size192, size320, bitrate, bitrate128, bitrate192, bitrate320, thumb, link, link2, url128, url192, url320, lyricstimestamp, lyrics, name, file, sha) {
-            toggleTab('manual-tab');
-            document.getElementById('var-id').value = id;
-            document.getElementById('var-artist').value = artist;
-            document.getElementById('var-title').value = title;
-            document.getElementById('var-year').value = year;
-            document.getElementById('var-album').value = album || '';
-            document.getElementById('var-genre').value = genre || '';
-            document.getElementById('var-category').value = category || '';
-            document.getElementById('var-duration').value = duration || '';
-            document.getElementById('var-size').value = size || '';
-            document.getElementById('var-size128').value = size128 || '';
-            document.getElementById('var-size192').value = size192 || '';
-            document.getElementById('var-size320').value = size320 || '';
-            document.getElementById('var-bitrate').value = bitrate || '192';
-            document.getElementById('var-bitrate128').value = bitrate128 || '128';
-            document.getElementById('var-bitrate192').value = bitrate192 || '192';
-            document.getElementById('var-bitrate320').value = bitrate320 || '320';
-            document.getElementById('var-thumb').value = thumb || '';
-            document.getElementById('var-link').value = link || '';
-            document.getElementById('var-link2').value = link2 || '';
-            document.getElementById('var-url128').value = url128 || '';
-            document.getElementById('var-url192').value = url192 || '';
-            document.getElementById('var-url320').value = url320 || '';
-            document.getElementById('var-lyricstimestamp').value = lyricstimestamp || '';
-            document.getElementById('var-lyrics').value = lyrics || '';
-            document.getElementById('var-name').value = name || '';
-            document.getElementById('var-file').value = file;
-            document.getElementById('var-sha').value = sha;
-            document.getElementById('submit-btn').textContent = 'Update Track';
-            document.getElementById('manual-form').scrollIntoView({ behavior: 'smooth' });
-          }
-
           function resetForm() {
             document.getElementById('json-form').reset();
             document.getElementById('manual-form').reset();
-            document.getElementById('var-id').value = '';
-            document.getElementById('var-file').value = '';
-            document.getElementById('var-sha').value = '';
             document.getElementById('submit-btn').textContent = 'Upload Track';
             fetch('/panel/reset-cache', {
               method: 'POST',
@@ -817,141 +922,27 @@ app.get('/panel', async (req, res) => {
               });
           }
         </script>
-      </head>
-      <body>
-        <div class="form-container">
-          <h1>Manage Tracks</h1>
-          <div class="tabs">
-            <div class="tab active" id="json-tab" onclick="toggleTab('json-tab')">Upload JSON</div>
-            <div class="tab" id="manual-tab" onclick="toggleTab('manual-tab')">Manual Input</div>
-          </div>
-          <div id="json-tab-content" class="tab-content active">
-            <form id="json-form" action="/panel" method="POST" enctype="multipart/form-data">
-              <div class="form-group">
-                <label for="json-file">Upload JSON File</label>
-                <input type="file" id="json-file" name="json-file" accept=".json" required>
-              </div>
-              <button type="submit" class="submit-btn">Upload JSON</button>
-              <button type="button" class="reset-btn" onclick="resetForm()">Reset</button>
-            </form>
-          </div>
-          <div id="manual-tab-content" class="tab-content">
-            <form id="manual-form" action="/panel" method="POST">
-              <input type="hidden" id="var-id" name="var-id">
-              <input type="hidden" id="var-file" name="var-file">
-              <input type="hidden" id="var-sha" name="var-sha">
-              <div class="form-group">
-                <label for="var-artist">Artist</label>
-                <input type="text" id="var-artist" name="var-artist" required>
-              </div>
-              <div class="form-group">
-                <label for="var-title">Title</label>
-                <input type="text" id="var-title" name="var-title" required>
-              </div>
-              <div class="form-group">
-                <label for="var-year">Year</label>
-                <input type="number" id="var-year" name="var-year">
-              </div>
-              <div class="form-group">
-                <label for="var-album">Album</label>
-                <input type="text" id="var-album" name="var-album">
-              </div>
-              <div class="form-group">
-                <label for="var-genre">Genre</label>
-                <input type="text" id="var-genre" name="var-genre">
-              </div>
-              <div class="form-group">
-                <label for="var-category">Category</label>
-                <input type="text" id="var-category" name="var-category">
-              </div>
-              <div class="form-group">
-                <label for="var-duration">Duration (e.g., 3:45)</label>
-                <input type="text" id="var-duration" name="var-duration">
-              </div>
-              <div class="form-group">
-                <label for="var-size">Size (MB)</label>
-                <input type="text" id="var-size" name="var-size">
-              </div>
-              <div class="form-group">
-                <label for="var-size128">Size 128kbps (MB)</label>
-                <input type="text" id="var-size128" name="var-size128">
-              </div>
-              <div class="form-group">
-                <label for="var-size192">Size 192kbps (MB)</label>
-                <input type="text" id="var-size192" name="var-size192">
-              </div>
-              <div class="form-group">
-                <label for="var-size320">Size 320kbps (MB)</label>
-                <input type="text" id="var-size320" name="var-size320">
-              </div>
-              <div class="form-group">
-                <label for="var-bitrate">Bitrate (kbps)</label>
-                <input type="text" id="var-bitrate" name="var-bitrate" value="192">
-              </div>
-              <div class="form-group">
-                <label for="var-bitrate128">Bitrate 128kbps</label>
-                <input type="text" id="var-bitrate128" name="var-bitrate128" value="128">
-              </div>
-              <div class="form-group">
-                <label for="var-bitrate192">Bitrate 192kbps</label>
-                <input type="text" id="var-bitrate192" name="var-bitrate192" value="192">
-              </div>
-              <div class="form-group">
-                <label for="var-bitrate320">Bitrate 320kbps</label>
-                <input type="text" id="var-bitrate320" name="var-bitrate320" value="320">
-              </div>
-              <div class="form-group">
-                <label for="var-thumb">Thumbnail URL</label>
-                <input type="text" id="var-thumb" name="var-thumb">
-              </div>
-              <div class="form-group">
-                <label for="var-link">Download Link</label>
-                <input type="text" id="var-link" name="var-link">
-              </div>
-              <div class="form-group">
-                <label for="var-link2">Alternative Download Link</label>
-                <input type="text" id="var-link2" name="var-link2">
-              </div>
-              <div class="form-group">
-                <label for="var-url128">Download URL (128kbps)</label>
-                <input type="text" id="var-url128" name="var-url128">
-              </div>
-              <div class="form-group">
-                <label for="var-url192">Download URL (192kbps)</label>
-                <input type="text" id="var-url192" name="var-url192">
-              </div>
-              <div class="form-group">
-                <label for="var-url320">Download URL (320kbps)</label>
-                <input type="text" id="var-url320" name="var-url320">
-              </div>
-              <div class="form-group">
-                <label for="var-lyricstimestamp">Lyrics Timestamp</label>
-                <textarea id="var-lyricstimestamp" name="var-lyricstimestamp"></textarea>
-              </div>
-              <div class="form-group">
-                <label for="var-lyrics">Lyrics</label>
-                <textarea id="var-lyrics" name="var-lyrics"></textarea>
-              </div>
-              <div class="form-group">
-                <label for="var-name">File Name</label>
-                <input type="text" id="var-name" name="var-name">
-              </div>
-              <button type="submit" id="submit-btn" class="submit-btn">Upload Track</button>
-              <button type="button" class="reset-btn" onclick="resetForm()">Reset</button>
-            </form>
-          </div>
-          <h2>Existing Tracks</h2>
-          <div id="track-list">
-            ${trackList}
-          </div>
-        </div>
       </body>
       </html>
     `;
-    res.send(html);
+    res.send(loginPage);
   } catch (error) {
     console.error('Error loading panel:', error);
     res.status(500).send('Error loading panel');
+  }
+});
+
+app.post('/panel/login', async (req, res) => {
+  try {
+    const { password } = req.body;
+    if (password === PANEL_PASSWORD) {
+      res.json({ success: true });
+    } else {
+      res.json({ success: false });
+    }
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
@@ -967,16 +958,11 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
         }
         trackData = trackData.map(track => {
           const yearNum = parseInt(track.year, 10);
-          const idNum = track.id ? parseInt(track.id, 10) : undefined;
           if (isNaN(yearNum) || yearNum === 0) {
             throw new Error('Invalid year value in JSON');
           }
-          if (idNum && isNaN(idNum)) {
-            throw new Error('Invalid ID value in JSON');
-          }
           return {
             ...track,
-            id: idNum,
             year: yearNum,
             artist: track.artist?.trim() || '',
             title: track.title?.trim() || '',
@@ -1011,9 +997,6 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
       await fs.unlink(req.file.path);
     } else {
       const {
-        'var-id': id,
-        'var-file': file,
-        'var-sha': sha,
         'var-artist': artist,
         'var-title': title,
         'var-year': year,
@@ -1045,12 +1028,8 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
         return res.status(400).send('Missing required fields: artist, title, or year');
       }
       const yearNum = parseInt(year, 10);
-      const idNum = id ? parseInt(id, 10) : undefined;
       if (isNaN(yearNum) || yearNum === 0) {
         return res.status(400).send('Invalid year value');
-      }
-      if (idNum && isNaN(idNum)) {
-        return res.status(400).send('Invalid ID value');
       }
 
       trackData = [{
@@ -1078,9 +1057,6 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
         lyricstimestamp: lyricstimestamp?.trim() || '',
         lyrics: lyrics?.trim() || '',
         name: name?.trim() || `${artist.trim()} - ${title.trim()}`,
-        id: idNum,
-        file,
-        sha,
         hits: hits?.trim() || '0'
       }];
     }
@@ -1105,35 +1081,15 @@ async function processTrack(trackData) {
   if (isNaN(yearNum) || yearNum === 0) {
     throw new Error('Invalid year value in JSON');
   }
-  const idNum = trackData.id ? parseInt(trackData.id, 10) : undefined;
-  if (trackData.id && isNaN(idNum)) {
-    throw new Error('Invalid ID value in JSON');
-  }
 
-  let newId = idNum;
-  let filePath = trackData.file;
-  let sha = trackData.sha;
-
-  if (!newId || !filePath || !sha) {
-    // New track creation
-    const latestId = await getLatestId();
-    newId = latestId + 1;
-    const existingFiles = await getAllTrackFiles();
-    if (existingFiles.some(file => file.id === newId)) {
-      throw new Error(`ID ${newId} already exists`);
-    }
-    const slug = generatePermalink(trackData.artist, trackData.title);
-    filePath = `file/${newId}-${slug}.json`;
-    sha = null; // No SHA for new files
-  } else {
-    // Update existing track
-    const existingFiles = await getAllTrackFiles();
-    const existingFile = existingFiles.find(file => file.id === newId && file.file === filePath);
-    if (!existingFile) {
-      throw new Error(`File ${filePath} with ID ${newId} does not exist`);
-    }
-    // Use provided filePath and sha
+  const latestId = await getLatestId();
+  const newId = latestId + 1;
+  const existingFiles = await getAllTrackFiles();
+  if (existingFiles.some(file => file.id === newId)) {
+    throw new Error(`ID ${newId} already exists`);
   }
+  const slug = generatePermalink(trackData.artist, trackData.title);
+  const filePath = `file/${newId}-${slug}.json`;
 
   const finalTrackData = {
     id: String(newId),
@@ -1161,14 +1117,12 @@ async function processTrack(trackData) {
     lyricstimestamp: trackData.lyricstimestamp || '',
     lyrics: trackData.lyrics || '',
     name: trackData.name || `${trackData.artist} - ${trackData.title}`,
-    created_at: trackData.created_at || new Date().toISOString(),
+    created_at: new Date().toISOString(),
     hits: trackData.hits || '0'
   };
 
-  const message = trackData.id
-    ? `Update track ${newId}: ${trackData.artist} - ${trackData.title}`
-    : `Add track ${newId}: ${trackData.artist} - ${trackData.title}`;
-  await updateGitHubFile(filePath, finalTrackData, message, sha);
+  const message = `Add track ${newId}: ${trackData.artist} - ${trackData.title}`;
+  await updateGitHubFile(filePath, finalTrackData, message);
 
   await getAllTrackFiles();
 
@@ -1291,7 +1245,7 @@ app.get('/track/:id/:permalink', async (req, res) => {
               <meta itemprop="position" content="4">
             </span>
           </div>
-          <br>
+          . 
           <div class="note">
            %var-lyrics%
           </div>
@@ -1300,6 +1254,7 @@ app.get('/track/:id/:permalink', async (req, res) => {
 
     const html = `
       <!DOCTYPE html>
+      <html lang="en">
       <html lang="en">
       <head>
         ${getMetaHeader(post, `https://wallkpop.vercel.app/track/${id}/${req.params.permalink}`)}
