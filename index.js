@@ -40,7 +40,7 @@ async function getGitHubFile(path) {
     const response = await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', {
       owner: repoOwner,
       repo: repoName,
-      path: path,
+      path,
       ref: branch
     });
 
@@ -74,10 +74,10 @@ async function updateGitHubFile(path, content, message, sha = null) {
     const response = await octokit.request('PUT /repos/{owner}/{repo}/contents/{path}', {
       owner: repoOwner,
       repo: repoName,
-      path: path,
-      message: message,
+      path,
+      message,
       content: Buffer.from(JSON.stringify(content, null, 2)).toString('base64'),
-      branch: branch,
+      branch,
       sha: sha || undefined
     });
 
@@ -91,11 +91,11 @@ async function updateGitHubFile(path, content, message, sha = null) {
   }
 }
 
-async function getAllTrackFiles() {
+async function getAllTrackFiles(page = null, perPage = null) {
   try {
     const cacheKey = 'github:track_files';
-    const cached = await kv.get(cacheKey);
-    if (cached) return cached;
+    let cached = await kv.get(cacheKey);
+    if (cached && !page) return cached;
 
     const response = await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', {
       owner: repoOwner,
@@ -126,8 +126,30 @@ async function getAllTrackFiles() {
       });
     }
 
-    await kv.set(cacheKey, files, { ex: 3600 });
-    return files;
+    files.sort((a, b) => b.id - a.id);
+
+    let result = files;
+    if (page && perPage) {
+      const startIndex = (page - 1) * perPage;
+      result = files.slice(startIndex, startIndex + perPage);
+    }
+
+    const fullData = [];
+    for (const file of result) {
+      try {
+        const track = await getGitHubFile(file.file);
+        fullData.push({ ...track, id: file.id, file: file.file, sha: file.sha });
+      } catch (error) {
+        console.error(`Skipping file ${file.file} due to error: ${error.message}`);
+        continue;
+      }
+    }
+
+    if (!page) {
+      await kv.set(cacheKey, fullData, { ex: 3600 });
+    }
+
+    return fullData;
   } catch (error) {
     console.error('Error fetching track files:', error.response?.data || error.message);
     if (error.status === 404) return [];
@@ -139,9 +161,7 @@ async function getLatestId() {
   try {
     const files = await getAllTrackFiles();
     if (!files || files.length === 0) return 10;
-    const ids = files.map(item => item.id);
-    const maxId = Math.max(...ids);
-    return maxId;
+    return Math.max(...files.map(item => item.id));
   } catch (error) {
     console.error('Error getting latest ID:', error.message);
     return 10;
@@ -159,8 +179,7 @@ const getFormattedDate = (format) => {
   const formats = {
     'Y-m-d': `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`,
     'd-m-Y': `${pad(date.getDate())}-${pad(date.getMonth() + 1)}-${date.getFullYear()}`,
-    'Y': `${date.getFullYear()}`,
-    'H:i': `${pad(date.getHours())}:${pad(date.getMinutes())}`
+    'Y': `${date.getFullYear()}`
   };
   return formats[format] || date.toISOString().split('T')[0];
 };
@@ -238,8 +257,8 @@ const getMetaHeader = (post = null, pageUrl = 'https://wallkpop.vercel.app/', qu
     <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico">
     <link rel="canonical" href="${pageUrl}">
     <link rel="stylesheet" type="text/css" href="/style.css"/>
-    <link rel="stylesheet" href="/plyr.css" />
-    <script src="/plyr.polyfilled.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/caraaink/otakudesu@1ff200e0bc05d43443b4944b46532c4b4c3cc275/plyr.css" />
+    <script src="https://cdn.jsdelivr.net/gh/caraaink/otakudesu@1ff200e0bc05d43443b4944b46532c4b4c3cc275/plyr.polyfilled.js"></script>
     <link href="https://stackpath.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet" integrity="sha384-wvfXpqpZZVQGK6TAh5PVlGOfQNHSoD2xbE+QkPxCAFlNEevoEH3Sl0sibVcOQVnN" crossorigin="anonymous">
     <link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;700&display=swap" rel="stylesheet">
     <meta name="google-site-verification" content="9e9RaAsVDPAkag708Q30S8xSw8_qIMm87FJBoJWzink" />
@@ -300,9 +319,7 @@ const getFooter = (pageUrl) => `
 `;
 
 const generatePagination = (currentPage, totalPages, baseUrl, query = '') => {
-  if (totalPages <= 1) {
-    return `<div class="paging"><span>1 of 1</span></div>`;
-  }
+  if (totalPages <= 1) return `<div class="paging"><span>1 of 1</span></div>`;
 
   const maxVisiblePages = 5;
   let startPage = Math.max(1, currentPage - 2);
@@ -313,7 +330,6 @@ const generatePagination = (currentPage, totalPages, baseUrl, query = '') => {
   }
 
   let pagination = `<div class="paging"><span>${currentPage} of ${totalPages}</span>`;
-
   if (currentPage > 1) {
     pagination += ` <a href="${baseUrl}${currentPage - 1}${query ? `?q=${encodeURIComponent(query)}&page=${currentPage - 1}` : ''}">Prev</a>`;
   } else {
@@ -329,7 +345,7 @@ const generatePagination = (currentPage, totalPages, baseUrl, query = '') => {
   }
 
   if (endPage < totalPages) {
-    pagination += `<!--<span>...</span>--> <a href="${baseUrl}${totalPages}${query ? `?q=${encodeURIComponent(query)}&page=${totalPages}` : ''}">${totalPages}</a>`;
+    pagination += ` <a href="${baseUrl}${totalPages}${query ? `?q=${encodeURIComponent(query)}&page=${totalPages}` : ''}">${totalPages}</a>`;
   }
 
   if (currentPage < totalPages) {
@@ -346,10 +362,7 @@ const parseBlogTags = (template, posts, options = {}) => {
   const { limit = 40, noMessage = '<center>No File</center>', to = ':url-1(:to-file:):' } = options;
   if (!posts || posts.length === 0) return noMessage;
 
-  const stripProtocol = (url) => {
-    if (!url) return '';
-    return url.replace(/^https?:\/\//, '//');
-  };
+  const stripProtocol = (url) => url ? url.replace(/^https?:\/\//, '//') : '';
 
   let result = '';
   posts.slice(0, limit).forEach((post, index) => {
@@ -374,23 +387,23 @@ const parseBlogTags = (template, posts, options = {}) => {
                .replace(/\t/g, '\\t');
     };
 
-    const linkOriginal = `<a href="https://meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(stripProtocol(post.thumb || ''))}&to-size=${encodeURIComponent(post.size || '')}&to-link2=${encodeURIComponent(stripProtocol(post.link2 || ''))}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(stripProtocol(post.link || ''))}&to-sizeori=${encodeURIComponent(post.size || '')}" target="_blank">
+    const linkOriginal = `<a href="https://meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(stripProtocol(post.thumb || ''))}&to-size=${encodeURIComponent(post.size || ''))}&to-link2=${encodeURIComponent(stripProtocol(post.link2 || ''))}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(stripProtocol(post.link || ''))}&to-sizeori=${encodeURIComponent(post.size || '')}" target="_blank">
       <button class="downd bitrate-192"><span class="medium-label">MQ</span><div class="title">Download Now</div><div class="size">(${post.size || ''})</div><span class="bitrate">${post.bitrate || '192'} kb/s</span></button>
     </a>`;
 
-    const link320 = post.url320 ? `<a href="https://meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(stripProtocol(post.thumb || ''))}&to-size=${encodeURIComponent(post.size320 || '')}&to-link2=${encodeURIComponent(stripProtocol(post.url320 || ''))}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(stripProtocol(post.link || ''))}&to-sizeori=${encodeURIComponent(post.size320 || '')}" target="_blank">
+    const link320 = post.url320 ? `<a href="https://meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(stripProtocol(post.thumb || ''))}&to-size=${encodeURIComponent(post.size320 || ''))}&to-link2=${encodeURIComponent(stripProtocol(post.url320 || ''))}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(stripProtocol(post.link || ''))}&to-sizeori=${encodeURIComponent(post.size320 || '')}" target="_blank">
       <button class="downd bitrate-320"><span class="hq-label">HQ</span><div class="title">Download Now</div><div class="size">(${post.size320 || ''})</div><span class="bitrate">${post.bitrate320 || '320'} kb/s</span></button>
     </a>` : '';
 
-    const link192 = post.url192 ? `<a href="https://meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(stripProtocol(post.thumb || ''))}&to-size=${encodeURIComponent(post.size192 || '')}&to-link2=${encodeURIComponent(stripProtocol(post.url192 || ''))}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(stripProtocol(post.link || ''))}&to-sizeori=${encodeURIComponent(post.size192 || '')}" target="_blank">
+    const link192 = post.url192 ? `<a href="https://meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(stripProtocol(post.thumb || ''))}&to-size=${encodeURIComponent(post.size192 || ''))}&to-link2=${encodeURIComponent(stripProtocol(post.url192 || ''))}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(stripProtocol(post.link || ''))}&to-sizeori=${encodeURIComponent(post.size192 || '')}" target="_blank">
       <button class="downd bitrate-192"><span class="medium-label">MQ</span><div class="title">Download Now</div><div class="size">(${post.size192 || ''})</div><span class="bitrate">${post.bitrate192 || '192'} kb/s</span></button>
     </a>` : '';
 
-    const link128 = post.url128 ? `<a href="https://meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(stripProtocol(post.thumb || ''))}&to-size=${encodeURIComponent(post.size128 || '')}&to-link2=${encodeURIComponent(stripProtocol(post.url128 || ''))}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(stripProtocol(post.link || ''))}&to-sizeori=${encodeURIComponent(post.size128 || '')}" target="_blank">
+    const link128 = post.url128 ? `<a href="https://meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(stripProtocol(post.thumb || ''))}&to-size=${encodeURIComponent(post.size128 || ''))}&to-link2=${encodeURIComponent(stripProtocol(post.url128 || ''))}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(stripProtocol(post.link || ''))}&to-sizeori=${encodeURIComponent(post.size128 || '')}" target="_blank">
       <button class="downd bitrate-128"><span class="low-label">LQ</span><div class="title">Download Now</div><div class="size">(${post.size128 || ''})</div><span class="bitrate">${post.bitrate128 || '128'} kb/s</span></button>
     </a>` : '';
 
-    let downloadButtons = link320 || link192 || link128
+    const downloadButtons = link320 || link192 || link128
       ? `<div class="download-buttons">${link320}${link192}${link128}</div>`
       : `<div class="download-buttons">${linkOriginal}</div>`;
 
@@ -446,161 +459,80 @@ const parseBlogTags = (template, posts, options = {}) => {
   return result;
 };
 
-app.get('/', async (req, res) => {
-  try {
-    const page = parseInt(req.query.page) || 1;
-    const postsPerPage = 40;
-    const files = await getAllTrackFiles();
-    const posts = [];
-    for (const item of files) {
-      try {
-        const post = await getGitHubFile(item.file);
-        posts.push({ ...post, id: item.id, created_at: post.created_at });
-      } catch (error) {
-        console.error(`Skipping file ${item.file} due to error: ${error.message}`);
-        continue;
-      }
-    }
-
-    posts.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-    const totalPosts = posts.length;
-    const totalPages = Math.ceil(totalPosts / postsPerPage);
-    const startIndex = (page - 1) * postsPerPage;
-    const paginatedPosts = posts.slice(startIndex, startIndex + postsPerPage);
-
-    const postList = parseBlogTags(`
-      <div class="album-list">
-        <table>
-          <tbody>
-            <tr valign="top">
-              <td class="kpops-list-thumb" align="center">
-                <div style="position: relative; display: inline-block; width: 60px; height: 55px;">
-                  <img class="thumb" src="%var-thumb%" alt="%var-artist% - %var-title%.mp3" width="60px" height="55px" style="display: block;">
-                </div>
-              </td>
-              <td align="left">
-                  <a title="Download %title% mp3" href="/track/%id%/:permalink:"><b>%var-artist% - %var-title%</b></a><br><span>
-                <font style="font-size:12px;line-height:2;"><i class="fa fa-audio-description" aria-hidden="true"></i> %var-album%</font><br>
-                <font style="font-size:11px;line-height:1.5;">
-                  <i class="fa fa-hdd-o" aria-hidden="true"></i> %var-size% MB -
-                  <i class="fa fa-clock-o" aria-hidden="true"></i> %var-duration% -
-                  <i class="fa fa-calendar" aria-hidden="true"></i> %text% -
-                  <i class="fa fa-file-audio-o" aria-hidden="true"></i> %var-genre% 
-                </font>
-              </span></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>`, paginatedPosts, { limit: postsPerPage, noMessage: '<center>No posts available</center>' });
-
-    const pagination = generatePagination(page, totalPages, '/page/');
-
-    const html = `
-      <!DOCTYPE html>
-      <html lang="en">
-      <head>
-        ${getMetaHeader(null, `https://wallkpop.vercel.app${page > 1 ? `/page/${page}` : ''}`)}
-      </head>
-      <body>
-        ${getHeader()}
-        <div id="content">
-        <div class="album">
-          <h3 style="font-size: 16px; margin: 0 0 8px 0; background: #ba412c; color: #ffffff; display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; border-radius: 4px;">
-            <span>Latest Uploaded Tracks</span>
-            <span style="background: #ffffff; color: #ba412c; font-size: 12px; padding: 2px 6px; border-radius: 3px; display: inline-block;">
-                <i class="fa fa-calendar" aria-hidden="true"></i> ${getFormattedDate('d-m-Y')}
+const getPostListTemplate = () => `
+  <div class="album-list">
+    <table>
+      <tbody>
+        <tr valign="top">
+          <td class="kpops-list-thumb" align="center">
+            <div style="position: relative; display: inline-block; width: 60px; height: 55px;">
+              <img class="thumb" src="%var-thumb%" alt="%var-artist% - %var-title%.mp3" width="60px" height="55px" style="display: block;">
+            </div>
+          </td>
+          <td align="left">
+            <span>
+              <a title="Download %title% mp3" href="/track/%id%/:permalink:"><b>%var-artist% - %var-title%</b></a><br>
+              <font style="font-size:12px;line-height:2;"><i class="fa fa-audio-description" aria-hidden="true"></i> %var-album%</font><br>
+              <font style="font-size:11px;line-height:1.5;">
+                <i class="fa fa-hdd-o" aria-hidden="true"></i> %var-size% MB -
+                <i class="fa fa-clock-o" aria-hidden="true"></i> %var-duration% -
+                <i class="fa fa-calendar" aria-hidden="true"></i> %text% -
+                <i class="fa fa-file-audio-o" aria-hidden="true"></i> %var-genre%
+              </font>
             </span>
-          </h3>
-          ${postList}
-          ${pagination}
-        </div></div>
-        ${getFooter(`https://wallkpop.vercel.app${page > 1 ? `/page/${page}` : ''}`)}
-      </body>
-    </html>
-    `;
-    res.send(html);
-  } catch (error) {
-    console.error('Error fetching posts:', error);
-    res.status(500).send('Error loading posts');
-  }
-});
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>`;
 
-app.get('/page/:page', async (req, res) => {
+app.get(['/', '/page/:page'], async (req, res) => {
   try {
-    const page = parseInt(req.params.page) || 1;
+    const page = parseInt(req.params.page || req.query.page || 1);
     if (page < 1) return res.redirect('/');
     const postsPerPage = 40;
-    const files = await getAllTrackFiles();
-    const posts = [];
-    for (const item of files) {
-      try {
-        const post = await getGitHubFile(item.file);
-        posts.push({ ...post, id: item.id, created_at: post.created_at });
-      } catch (error) {
-        console.error(`Skipping file ${item.file} due to error: ${error.message}`);
-        continue;
-      }
+
+    const cacheKey = `index:page:${page}`;
+    const cached = await kv.get(cacheKey);
+    if (cached) {
+      return res.send(cached);
     }
 
-    posts.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-    const totalPosts = posts.length;
+    const posts = await getAllTrackFiles(page, postsPerPage);
+    const totalPosts = (await getAllTrackFiles()).length;
     const totalPages = Math.ceil(totalPosts / postsPerPage);
-    if (page > totalPages) return res.redirect(`/page/${totalPages}`);
-    const startIndex = (page - 1) * postsPerPage;
-    const paginatedPosts = posts.slice(startIndex, startIndex + postsPerPage);
 
-    const postList = parseBlogTags(`
-      <div class="album-list">
-        <table>
-          <tbody>
-            <tr valign="top">
-              <td class="kpops-list-thumb" align="center">
-                <div style="position: relative; display: inline-block; width: 60px; height: 55px;">
-                  <img class="thumb" src="%var-thumb%" alt="%var-artist% - %var-title%.mp3" width="60px" height="55px" style="display: block;">
-                </div>
-              </td>
-              <td align="left">
-                <span>
-                  <a title="Download %title% mp3" href="/track/%id%/:permalink:"><b>%var-artist% - %var-title%</b></a><br>
-                  <font style="font-size:12px;line-height:2;"><i class="fa fa-audio-description" aria-hidden="true"></i> %var-album%</font><br>
-                  <font style="font-size:11px;line-height:1.5;">
-                    <i class="fa fa-hdd-o" aria-hidden="true"></i> %var-size% MB -
-                    <i class="fa fa-clock-o" aria-hidden="true"></i> %var-duration% -
-                    <i class="fa fa-calendar" aria-hidden="true"></i> %text% -
-                    <i class="fa fa-file-audio-o" aria-hidden="true"></i> %var-genre%
-                  </font>
-                </span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>`, paginatedPosts, { limit: postsPerPage, noMessage: '<center>No posts available</center>' });
+    if (page > totalPages && totalPosts > 0) return res.redirect(`/page/${totalPages}`);
 
+    const postList = parseBlogTags(getPostListTemplate(), posts, { limit: postsPerPage, noMessage: '<center>No posts available</center>' });
     const pagination = generatePagination(page, totalPages, '/page/');
 
+    const pageUrl = `https://wallkpop.vercel.app${page > 1 ? `/page/${page}` : ''}`;
     const html = `
       <!DOCTYPE html>
       <html lang="en">
       <head>
-        ${getMetaHeader(null, `https://wallkpop.vercel.app/page/${page}`)}
+        ${getMetaHeader(null, pageUrl)}
       </head>
       <body>
         ${getHeader()}
         <div id="content">
           <div class="album">
-          <h3 style="font-size: 16px; margin: 0 0 8px 0; background: #ba412c; color: #ffffff; display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; border-radius: 4px;">
-            <span>Latest Uploaded Tracks</span>
-            <span style="background: #ffffff; color: #ba412c; font-size: 12px; padding: 2px 6px; border-radius: 3px; display: inline-block;">
-              <i class="fa fa-calendar" aria-hidden="true"></i> ${getFormattedDate('d-m-Y')}
-            </span>
-          </h3>    
-          ${postList}
-          ${pagination}
-        </div></div>
-        ${getFooter(`https://wallkpop.vercel.app/page/${page}`)}
+            <h3 style="font-size: 16px; margin: 0 0 8px 0; background: #ba412c; color: #ffffff; display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; border-radius: 4px;">
+              <span>Latest Uploaded Tracks</span>
+              <span style="background: #ffffff; color: #ba412c; font-size: 12px; padding: 2px 6px; border-radius: 3px; display: inline-block;">
+                <i class="fa fa-calendar" aria-hidden="true"></i> ${getFormattedDate('d-m-Y')}
+              </span>
+            </h3>
+            ${postList}
+            ${pagination}
+          </div>
+        </div>
+        ${getFooter(pageUrl)}
       </body>
-    </html>
-    `;
+    </html>`;
+
+    await kv.set(cacheKey, html, { ex: 3600 });
     res.send(html);
   } catch (error) {
     console.error('Error fetching posts:', error);
@@ -610,24 +542,10 @@ app.get('/page/:page', async (req, res) => {
 
 app.get('/sitemap.xml', async (req, res) => {
   try {
-    const files = await getAllTrackFiles();
-    const posts = [];
-    for (const item of files) {
-      try {
-        const post = await getGitHubFile(item.file);
-        posts.push({ ...post, id: item.id, file: item.file, created_at: post.created_at });
-      } catch (error) {
-        console.error(`Skipping sitemap file ${item.file}: ${error.message}`);
-        continue;
-      }
-    }
-
-    posts.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    const posts = await getAllTrackFiles();
     const limitedPosts = posts.slice(0, 500);
-
     const postsPerPage = 40;
-    const totalPosts = posts.length;
-    const totalPages = Math.ceil(totalPosts / postsPerPage);
+    const totalPages = Math.ceil(posts.length / postsPerPage);
 
     let sitemap = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
@@ -693,188 +611,98 @@ app.get('/panel', async (req, res) => {
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>Panel Login | Wallkpop</title>
         <style>
-  body { 
-    font-family: 'Lora', Arial, sans-serif; 
-    margin: 0; 
-    padding: 0; 
-    display: flex; 
-    flex-direction: column; 
-    align-items: center; 
-    min-height: 100vh; 
-    background: #f4f4f4; 
-    box-sizing: border-box; 
-  }
-  .login-container { 
-    max-width: 400px; 
-    padding: 20px; 
-    background: white; 
-    border-radius: 8px; 
-    box-shadow: 0 0 10px rgba(0,0,0,0.1); 
-    margin: 20px auto; 
-    box-sizing: border-box; 
-  }
-  .form-container { 
-    max-width: 900px; 
-    margin: 40px auto; 
-    padding: 20px; 
-    background: white; 
-    border-radius: 10px; 
-    box-shadow: 0 0 10px rgba(0,0,0,0.1); 
-    box-sizing: border-box; 
-    padding-top: 20px; 
-  }
-  .form-group { 
-    margin-bottom: 20px; 
-  }
-  .form-group label { 
-    display: block; 
-    margin-bottom: 8px; 
-    font-weight: bold; 
-  }
-  .form-group input, .form-group textarea { 
-    width: 100%; 
-    padding: 10px; 
-    border: 1px solid #ddd; 
-    border-radius: 4px; 
-    box-sizing: border-box; 
-  }
-  .form-group textarea { 
-    height: 120px; 
-  }
-  .submit-btn { 
-    width: 100%; 
-    padding: 10px; 
-    background: #007bff; 
-    color: white; 
-    border: none; 
-    border-radius: 4px; 
-    cursor: pointer; 
-  }
-  .submit-btn:hover { 
-    background: #0056b3; 
-  }
-  .error { 
-    color: red; 
-    text-align: center; 
-    margin-top: 10px; 
-  }
-  .button-group { 
-    display: flex; 
-    gap: 10px; 
-  }
-  .submit-btn, .reset-btn { 
-    padding: 10px 20px; 
-    background: #007bff; 
-    color: white; 
-    border: none; 
-    border-radius: 4px; 
-    cursor: pointer; 
-    flex: 1; 
-  }
-  .submit-btn:hover, .reset-btn:hover { 
-    background: #0056b3; 
-  }
-  .tabs { 
-    display: flex; 
-    gap: 10px; 
-    margin-bottom: 20px; 
-  }
-  .tab { 
-    padding: 10px; 
-    cursor: pointer; 
-    border: 1px solid #ddd; 
-    border-radius: 4px; 
-  }
-  .tab.active { 
-    background: #007bff; 
-    color: white; 
-  }
-  .tab-content { 
-    display: none; 
-  }
-  .tab-content.active { 
-    display: block; 
-  }
-</style>
-<script>
-  function checkLogin() {
-    const loginData = localStorage.getItem('panelLogin');
-    if (loginData) {
-      const { timestamp } = JSON.parse(loginData);
-      const now = new Date().getTime();
-      const twentyFourHours = 24 * 60 * 60 * 1000;
-      if (now - timestamp < twentyFourHours) {
-        document.getElementById('login-form').style.display = 'none';
-        document.getElementById('panel-content').style.display = 'block';
-        return;
-      } else {
-        localStorage.removeItem('panelLogin');
-      }
-    }
-  }
+          body { font-family: 'Lora', Arial, sans-serif; margin: 0; padding: 0; display: flex; flex-direction: column; align-items: center; min-height: 100vh; background: #f4f4f4; box-sizing: border-box; }
+          .login-container { max-width: 400px; padding: 20px; background: white; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); margin: 20px auto; box-sizing: border-box; }
+          .form-container { max-width: 900px; margin: 40px auto; padding: 20px; background: white; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); box-sizing: border-box; padding-top: 20px; }
+          .form-group { margin-bottom: 20px; }
+          .form-group label { display: block; margin-bottom: 8px; font-weight: bold; }
+          .form-group input, .form-group textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+          .form-group textarea { height: 120px; }
+          .submit-btn { width: 100%; padding: 10px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+          .submit-btn:hover { background: #0056b3; }
+          .error { color: red; text-align: center; margin-top: 10px; }
+          .button-group { display: flex; gap: 10px; }
+          .submit-btn, .reset-btn { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; flex: 1; }
+          .submit-btn:hover, .reset-btn:hover { background: #0056b3; }
+          .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
+          .tab { padding: 10px; cursor: pointer; border: 1px solid #ddd; border-radius: 4px; }
+          .tab.active { background: #007bff; color: white; }
+          .tab-content { display: none; }
+          .tab-content.active { display: block; }
+        </style>
+        <script>
+          function checkLogin() {
+            const loginData = localStorage.getItem('panelLogin');
+            if (loginData) {
+              const { timestamp } = JSON.parse(loginData);
+              const now = new Date().getTime();
+              const twentyFourHours = 24 * 60 * 60 * 1000;
+              if (now - timestamp < twentyFourHours) {
+                document.getElementById('login-form').style.display = 'none';
+                document.getElementById('panel-content').style.display = 'block';
+                return;
+              } else {
+                localStorage.removeItem('panelLogin');
+              }
+            }
+          }
 
-  function handleLogin(event) {
-    event.preventDefault();
-    const password = document.getElementById('password').value;
-    fetch('/panel/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password })
-    })
-    .then(response => response.json())
-    .then(data => {
-      if (data.success) {
-        localStorage.setItem('panelLogin', JSON.stringify({ timestamp: new Date().getTime() }));
-        document.getElementById('login-form').style.display = 'none';
-        document.getElementById('panel-content').style.display = 'block';
-      } else {
-        document.getElementById('error').textContent = 'Invalid password';
-      }
-    })
-    .catch(error => {
-      document.getElementById('error').textContent = 'Error logging in';
-      console.error('Login error:', error);
-    });
-  }
+          function handleLogin(event) {
+            event.preventDefault();
+            const password = document.getElementById('password').value;
+            fetch('/panel/login', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ password })
+            })
+            .then(response => response.json())
+            .then(data => {
+              if (data.success) {
+                localStorage.setItem('panelLogin', JSON.stringify({ timestamp: new Date().getTime() }));
+                document.getElementById('login-form').style.display = 'none';
+                document.getElementById('panel-content').style.display = 'block';
+              } else {
+                document.getElementById('error').textContent = 'Invalid password';
+              }
+            })
+            .catch(error => {
+              document.getElementById('error').textContent = 'Error logging in';
+              console.error('Login error:', error);
+            });
+          }
 
-  function toggleTab(tabId) {
-    document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-    document.getElementById(tabId).classList.add('active');
-    document.getElementById(tabId + '-content').classList.add('active');
-    const formContainer = document.querySelector('.form-container');
-    if (formContainer) {
-      window.scrollTo({
-        top: formContainer.offsetTop - 20,
-        behavior: 'smooth'
-      });
-    }
-  }
+          function toggleTab(tabId) {
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            document.getElementById(tabId).classList.add('active');
+            document.getElementById(tabId + '-content').classList.add('active');
+            const formContainer = document.querySelector('.form-container');
+            if (formContainer) {
+              window.scrollTo({ top: formContainer.offsetTop - 20, behavior: 'smooth' });
+            }
+          }
 
-  function resetForm() {
-    document.getElementById('json-form').reset();
-    document.getElementById('manual-form').reset();
-    document.getElementById('submit-btn').textContent = 'Upload Track';
-    fetch('/panel/reset-cache', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
-    })
-      .then(response => response.json())
-      .then(result => {
-        if (result.message) {
-          alert('Cache cleared successfully');
-        } else {
-          alert('Error clearing cache: ' + (result.error || 'Unknown error'));
-        }
-      })
-      .catch(error => {
-        console.error('Reset cache error:', error);
-        alert('Error clearing cache: ' + error.message);
-      });
-  }
+          function resetForm() {
+            document.getElementById('json-form').reset();
+            document.getElementById('manual-form').reset();
+            document.getElementById('submit-btn').textContent = 'Upload Track';
+            fetch('/panel/reset-cache', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' }
+            })
+              .then(response => response.json())
+              .then(result => {
+                if (result.message) alert('Cache cleared successfully');
+                else alert('Error clearing cache: ' + (result.error || 'Unknown error'));
+              })
+              .catch(error => {
+                console.error('Reset cache error:', error);
+                alert('Error clearing cache: ' + error.message);
+              });
+          }
 
-  window.onload = checkLogin;
-</script>
+          window.onload = checkLogin;
+        </script>
       </head>
       <body>
         <div class="login-container">
@@ -900,9 +728,9 @@ app.get('/panel', async (req, res) => {
                   <input type="file" id="json-file" name="json-file" accept=".json" required>
                 </div>
                 <div class="button-group">
-  <button type="submit" id="submit-btn" class="submit-btn">Upload Track</button>
-  <button type="button" class="reset-btn" onclick="resetForm()">Reset</button>
-</div>
+                  <button type="submit" id="submit-btn" class="submit-btn">Upload Track</button>
+                  <button type="button" class="reset-btn" onclick="resetForm()">Reset</button>
+                </div>
               </form>
             </div>
             <div id="manual-tab-content" class="tab-content">
@@ -1004,16 +832,15 @@ app.get('/panel', async (req, res) => {
                   <input type="text" id="var-name" name="var-name">
                 </div>
                 <div class="button-group">
-  <button type="submit" id="submit-btn" class="submit-btn">Upload Track</button>
-  <button type="button" class="reset-btn" onclick="resetForm()">Reset</button>
-</div>
+                  <button type="submit" id="submit-btn" class="submit-btn">Upload Track</button>
+                  <button type="button" class="reset-btn" onclick="resetForm()">Reset</button>
+                </div>
               </form>
             </div>
           </div>
         </div>
       </body>
-      </html>
-    `;
+    </html>`;
     res.send(loginPage);
   } catch (error) {
     console.error('Error loading panel:', error);
@@ -1042,14 +869,10 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
       const fileContent = await fs.readFile(req.file.path, 'utf-8');
       try {
         trackData = JSON.parse(fileContent);
-        if (!Array.isArray(trackData)) {
-          trackData = [trackData];
-        }
+        if (!Array.isArray(trackData)) trackData = [trackData];
         trackData = trackData.map(track => {
           const yearNum = parseInt(track.year, 10);
-          if (isNaN(yearNum) || yearNum === 0) {
-            throw new Error('Invalid year value in JSON');
-          }
+          if (isNaN(yearNum) || yearNum === 0) throw new Error('Invalid year value in JSON');
           return {
             ...track,
             year: yearNum,
@@ -1113,13 +936,9 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
         'var-hits': hits
       } = req.body;
 
-      if (!artist || !title || !year) {
-        return res.status(400).send('Missing required fields: artist, title, or year');
-      }
+      if (!artist || !title || !year) return res.status(400).send('Missing required fields: artist, title, or year');
       const yearNum = parseInt(year, 10);
-      if (isNaN(yearNum) || yearNum === 0) {
-        return res.status(400).send('Invalid year value');
-      }
+      if (isNaN(yearNum) || yearNum === 0) return res.status(400).send('Invalid year value');
 
       trackData = [{
         artist: artist.trim(),
@@ -1163,20 +982,15 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
 });
 
 async function processTrack(trackData) {
-  if (!trackData.artist || !trackData.title || trackData.year === 0) {
-    throw new Error('Missing or invalid required fields: artist, title, or year');
-  }
+  if (!trackData.artist || !trackData.title || trackData.year === 0) throw new Error('Missing or invalid required fields: artist, title, or year');
   const yearNum = parseInt(trackData.year, 10);
-  if (isNaN(yearNum) || yearNum === 0) {
-    throw new Error('Invalid year value in JSON');
-  }
+  if (isNaN(yearNum) || yearNum === 0) throw new Error('Invalid year value in JSON');
 
   const latestId = await getLatestId();
   const newId = latestId + 1;
   const existingFiles = await getAllTrackFiles();
-  if (existingFiles.some(file => file.id === newId)) {
-    throw new Error(`ID ${newId} already exists`);
-  }
+  if (existingFiles.some(file => file.id === newId)) throw new Error(`ID ${newId} already exists`);
+
   const slug = generatePermalink(trackData.artist, trackData.title);
   const filePath = `file/${newId}-${slug}.json`;
 
@@ -1244,21 +1058,10 @@ app.get('/track/:id/:permalink', async (req, res) => {
 
     const post = await getGitHubFile(trackItem.file);
 
-    const related = (await Promise.all(
-      files
-        .filter(item => item.id !== parseInt(id))
-        .map(async (item) => {
-          try {
-            const track = await getGitHubFile(item.file);
-            return { id: item.id, artist: track.artist, title: track.title };
-          } catch (error) {
-            console.error(`Skipping related file ${item.file}: ${error.message}`);
-            return null;
-          }
-        })
-    ))
-      .filter(item => item !== null && item.artist === post.artist)
-      .slice(0, 20);
+    const related = files
+      .filter(item => item.id !== parseInt(id) && item.artist === post.artist)
+      .slice(0, 20)
+      .map(item => ({ id: item.id, artist: item.artist, title: item.title }));
 
     const relatedContent = parseBlogTags(`
       <div class="lagu">
@@ -1305,7 +1108,7 @@ app.get('/track/:id/:permalink', async (req, res) => {
           </div>
           <div id="debug" class="debug">Loading...</div>
           <script>const lyricsText = "%var-lyricstimestamp%";</script>
-          <script src="/audio-lyrics-timestamp.js"></script>
+          <script src="https://cdn.jsdelivr.net/gh/caraaink/meownime@refs/heads/main/javascript/audio-lyrics-timestamp.js"></script>
           <div style="text-align: center;"><br>
             %download-buttons%
           </div>
@@ -1334,16 +1137,14 @@ app.get('/track/:id/:permalink', async (req, res) => {
               <meta itemprop="position" content="4">
             </span>
           </div>
-          . 
           <div class="note">
-           %var-lyrics%
+            %var-lyrics%
           </div>
         </div>
       </div>`, [post], { noMessage: 'No Post' });
 
     const html = `
       <!DOCTYPE html>
-      <html lang="en">
       <html lang="en">
       <head>
         ${getMetaHeader(post, `https://wallkpop.vercel.app/track/${id}/${req.params.permalink}`)}
@@ -1359,8 +1160,7 @@ app.get('/track/:id/:permalink', async (req, res) => {
         </div>
         ${getFooter(`https://wallkpop.vercel.app/track/${id}/${req.params.permalink}`)}
       </body>
-    </html>
-    `;
+    </html>`;
     res.send(html);
   } catch (error) {
     console.error('Error fetching track:', error);
@@ -1371,67 +1171,39 @@ app.get('/track/:id/:permalink', async (req, res) => {
 app.get('/search', async (req, res) => {
   try {
     const query = req.query.q ? req.query.q.toLowerCase() : '';
-    const page = parseInt(req.query.page) || 1;
+    const page = parseInt(req.query.page || 1);
     const postsPerPage = 40;
+
+    const cacheKey = `search:${query}:page:${page}`;
+    const cached = await kv.get(cacheKey);
+    if (cached) return res.send(cached);
+
     const files = await getAllTrackFiles();
-    const posts = [];
-    for (const item of files) {
-      try {
-        const track = await getGitHubFile(item.file);
-        if (
-          track.artist.toLowerCase().includes(query) ||
-          track.title.toLowerCase().includes(query) ||
-          track.year.toString().includes(query) ||
-          (track.genre && track.genre.toLowerCase().includes(query))
-        ) {
-          posts.push({ ...track, id: item.id });
-        }
-      } catch (error) {
-        console.error(`Skipping search file ${item.file}: ${error.message}`);
-        continue;
-      }
-    }
-    posts.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-    const totalPosts = posts.length;
+    const filteredFiles = files.filter(file => 
+      file.artist.toLowerCase().includes(query) ||
+      file.title.toLowerCase().includes(query) ||
+      file.year.toString().includes(query) ||
+      (file.genre && file.genre.toLowerCase().includes(query))
+    );
+
+    filteredFiles.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    const totalPosts = filteredFiles.length;
     const totalPages = Math.ceil(totalPosts / postsPerPage);
+
     if (page > totalPages && totalPosts > 0) return res.redirect(`/search?q=${encodeURIComponent(query)}&page=${totalPages}`);
+
     const startIndex = (page - 1) * postsPerPage;
-    const paginatedPosts = posts.slice(startIndex, startIndex + postsPerPage);
+    const paginatedPosts = filteredFiles.slice(startIndex, startIndex + postsPerPage);
 
-    const searchResults = parseBlogTags(`
-      <div class="album-list">
-        <table>
-          <tbody>
-            <tr valign="top">
-              <td class="kpops-list-thumb" align="center">
-                <div style="position: relative; display: inline-block; width: 60px; height: 55px;">
-                  <img class="thumb" src="%var-thumb%" alt="%var-artist% - %var-title%.mp3" width="60px" height="55px" style="display: block;">
-                </div>
-              </td>
-              <td align="left">
-                <span>
-                  <a title="Download %title% mp3" href="/track/%id%/:permalink:"><b>%var-artist% - %var-title%</b></a><br>
-                  <font style="font-size:12px;line-height:2;"><i class="fa fa-audio-description" aria-hidden="true"></i> %var-album%</font><br>
-                  <font style="font-size:11px;line-height:1.5;">
-                    <i class="fa fa-hdd-o" aria-hidden="true"></i> %var-size% MB -
-                    <i class="fa fa-clock-o" aria-hidden="true"></i> %var-duration% -
-                    <i class="fa fa-calendar" aria-hidden="true"></i> %text% -
-                    <i class="fa fa-file-audio-o" aria-hidden="true"></i> %var-genre%
-                  </font>
-                </span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>`, paginatedPosts, { limit: postsPerPage, noMessage: '<center>No File</center>' });
-
+    const searchResults = parseBlogTags(getPostListTemplate(), paginatedPosts, { limit: postsPerPage, noMessage: '<center>No File</center>' });
     const pagination = generatePagination(page, totalPages, '/search', query);
 
+    const pageUrl = `https://wallkpop.vercel.app/search?q=${encodeURIComponent(req.query.q || '')}${page > 1 ? `&page=${page}` : ''}`;
     const html = `
       <!DOCTYPE html>
       <html lang="en">
       <head>
-        ${getMetaHeader(null, `https://wallkpop.vercel.app/search?q=${encodeURIComponent(req.query.q || '')}${page > 1 ? `&page=${page}` : ''}`, req.query.q || '')}
+        ${getMetaHeader(null, pageUrl, req.query.q || '')}
       </head>
       <body>
         ${getHeader(req.query.q || '')}
@@ -1442,10 +1214,11 @@ app.get('/search', async (req, res) => {
             ${pagination}
           </div>
         </div>
-        ${getFooter(`https://wallkpop.vercel.app/search?q=${encodeURIComponent(req.query.q || '')}${page > 1 ? '&page=' + page : ''}`)}
+        ${getFooter(pageUrl)}
       </body>
-    </html>
-    `;
+    </html>`;
+
+    await kv.set(cacheKey, html, { ex: 3600 });
     res.send(html);
   } catch (error) {
     console.error('Search error:', error);
