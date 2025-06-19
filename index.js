@@ -871,26 +871,34 @@ app.get('/panel', async (req, res) => {
                   <label for="var-name">File Name</label>
                   <input type="text" id="var-name" name="var-name">
                 </div>
-                <button type="submit" id="submit-btn" class="submit-btn">Upload Track</button>
-                <button type="button" class="reset-btn" onclick="resetForm()">Reset</button>
+                <div class="button-group">
+  <button type="submit" id="submit-btn" class="submit-btn">Upload Track</button>
+  <button type="button" class="reset-btn" onclick="resetForm()">Reset</button>
+</div>
               </form>
             </div>
           </div>
         </div>
         <style>
-          .form-container { max-width: 800px; margin: 20px auto; }
-          .form-group { margin-bottom: 15px; }
-          .form-group label { display: block; margin-bottom: 5px; }
-          .form-group input, .form-group textarea { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
-          .form-group textarea { height: 100px; }
-          .submit-btn, .reset-btn { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 10px; }
-          .submit-btn:hover, .reset-btn:hover { background: #0056b3; }
-          .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
-          .tab { padding: 10px; cursor: pointer; border: 1px solid #ddd; border-radius: 4px; }
-          .tab.active { background: #007bff; color: white; }
-          .tab-content { display: none; }
-          .tab-content.active { display: block; }
-        </style>
+  body { font-family: 'Lora', Arial, sans-serif; margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background: #f4f4f4; }
+  .login-container { max-width: 400px; padding: 20px; background: white; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+  .form-group { margin-bottom: 20px; }
+  .form-group label { display: block; margin-bottom: 8px; font-weight: bold; }
+  .form-group input, .form-group textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+  .form-group textarea { height: 120px; }
+  .submit-btn { width: 100%; padding: 10px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+  .submit-btn:hover { background: #0056b3; }
+  .error { color: red; text-align: center; margin-top: 10px; }
+  .form-container { max-width: 900px; margin: 30px auto; padding: 20px; }
+  .button-group { display: flex; gap: 10px; }
+  .submit-btn, .reset-btn { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; flex: 1; }
+  .submit-btn:hover, .reset-btn:hover { background: #0056b3; }
+  .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
+  .tab { padding: 10px; cursor: pointer; border: 1px solid #ddd; border-radius: 4px; }
+  .tab.active { background: #007bff; color: white; }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+</style>
         <script>
           function toggleTab(tabId) {
             document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
