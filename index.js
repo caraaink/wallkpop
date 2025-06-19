@@ -882,56 +882,188 @@ app.get('/panel', async (req, res) => {
           </div>
         </div>
         <style>
-  body { font-family: 'Lora', Arial, sans-serif; margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background: #f4f4f4; }
-  .login-container { max-width: 400px; padding: 20px; background: white; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-  .form-group { margin-bottom: 20px; }
-  .form-group label { display: block; margin-bottom: 8px; font-weight: bold; }
-  .form-group input, .form-group textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
-  .form-group textarea { height: 120px; }
-  .submit-btn { width: 100%; padding: 10px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
-  .submit-btn:hover { background: #0056b3; }
-  .error { color: red; text-align: center; margin-top: 10px; }
-  .form-container { max-width: 900px; margin: 30px auto; padding: 20px; }
-  .button-group { display: flex; gap: 10px; }
-  .submit-btn, .reset-btn { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; flex: 1; }
-  .submit-btn:hover, .reset-btn:hover { background: #0056b3; }
-  .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
-  .tab { padding: 10px; cursor: pointer; border: 1px solid #ddd; border-radius: 4px; }
-  .tab.active { background: #007bff; color: white; }
-  .tab-content { display: none; }
-  .tab-content.active { display: block; }
+  body { 
+    font-family: 'Lora', Arial, sans-serif; 
+    margin: 0; 
+    padding: 0; 
+    display: flex; 
+    flex-direction: column; 
+    align-items: center; 
+    min-height: 100vh; 
+    background: #f4f4f4; 
+    box-sizing: border-box; 
+  }
+  .login-container { 
+    max-width: 400px; 
+    padding: 20px; 
+    background: white; 
+    border-radius: 8px; 
+    box-shadow: 0 0 10px rgba(0,0,0,0.1); 
+    margin: 20px auto; 
+    box-sizing: border-box; 
+  }
+  .form-container { 
+    max-width: 900px; 
+    margin: 40px auto; 
+    padding: 20px; 
+    background: white; 
+    border-radius: 10px; 
+    box-shadow: 0 0 10px rgba(0,0,0,0.1); 
+    box-sizing: border-box; 
+    padding-top: 20px; 
+  }
+  .form-group { 
+    margin-bottom: 20px; 
+  }
+  .form-group label { 
+    display: block; 
+    margin-bottom: 8px; 
+    font-weight: bold; 
+  }
+  .form-group input, .form-group textarea { 
+    width: 100%; 
+    padding: 10px; 
+    border: 1px solid #ddd; 
+    border-radius: 4px; 
+    box-sizing: border-box; 
+  }
+  .form-group textarea { 
+    height: 120px; 
+  }
+  .submit-btn { 
+    width: 100%; 
+    padding: 10px; 
+    background: #007bff; 
+    color: white; 
+    border: none; 
+    border-radius: 4px; 
+    cursor: pointer; 
+  }
+  .submit-btn:hover { 
+    background: #0056b3; 
+  }
+  .error { 
+    color: red; 
+    text-align: center; 
+    margin-top: 10px; 
+  }
+  .button-group { 
+    display: flex; 
+    gap: 10px; 
+  }
+  .submit-btn, .reset-btn { 
+    padding: 10px 20px; 
+    background: #007bff; 
+    color: white; 
+    border: none; 
+    border-radius: 4px; 
+    cursor: pointer; 
+    flex: 1; 
+  }
+  .submit-btn:hover, .reset-btn:hover { 
+    background: #0056b3; 
+  }
+  .tabs { 
+    display: flex; 
+    gap: 10px; 
+    margin-bottom: 20px; 
+  }
+  .tab { 
+    padding: 10px; 
+    cursor: pointer; 
+    border: 1px solid #ddd; 
+    border-radius: 4px; 
+  }
+  .tab.active { 
+    background: #007bff; 
+    color: white; 
+  }
+  .tab-content { 
+    display: none; 
+  }
+  .tab-content.active { 
+    display: block; 
+  }
 </style>
-        <script>
-          function toggleTab(tabId) {
-            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-            document.getElementById(tabId).classList.add('active');
-            document.getElementById(tabId + '-content').classList.add('active');
-            document.getElementById('manual-form').scrollIntoView({ behavior: 'smooth' });
-          }
+<script>
+  function checkLogin() {
+    const loginData = localStorage.getItem('panelLogin');
+    if (loginData) {
+      const { timestamp } = JSON.parse(loginData);
+      const now = new Date().getTime();
+      const twentyFourHours = 24 * 60 * 60 * 1000;
+      if (now - timestamp < twentyFourHours) {
+        document.getElementById('login-form').style.display = 'none';
+        document.getElementById('panel-content').style.display = 'block';
+        return;
+      } else {
+        localStorage.removeItem('panelLogin');
+      }
+    }
+  }
 
-          function resetForm() {
-            document.getElementById('json-form').reset();
-            document.getElementById('manual-form').reset();
-            document.getElementById('submit-btn').textContent = 'Upload Track';
-            fetch('/panel/reset-cache', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' }
-            })
-              .then(response => response.json())
-              .then(result => {
-                if (result.message) {
-                  alert('Cache cleared successfully');
-                } else {
-                  alert('Error clearing cache: ' + (result.error || 'Unknown error'));
-                }
-              })
-              .catch(error => {
-                console.error('Reset cache error:', error);
-                alert('Error clearing cache: ' + error.message);
-              });
-          }
-        </script>
+  function handleLogin(event) {
+    event.preventDefault();
+    const password = document.getElementById('password').value;
+    fetch('/panel/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password })
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        localStorage.setItem('panelLogin', JSON.stringify({ timestamp: new Date().getTime() }));
+        document.getElementById('login-form').style.display = 'none';
+        document.getElementById('panel-content').style.display = 'block';
+      } else {
+        document.getElementById('error').textContent = 'Invalid password';
+      }
+    })
+    .catch(error => {
+      document.getElementById('error').textContent = 'Error logging in';
+      console.error('Login error:', error);
+    });
+  }
+
+  function toggleTab(tabId) {
+    document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+    document.getElementById(tabId).classList.add('active');
+    document.getElementById(tabId + '-content').classList.add('active');
+    const formContainer = document.querySelector('.form-container');
+    if (formContainer) {
+      window.scrollTo({
+        top: formContainer.offsetTop - 20,
+        behavior: 'smooth'
+      });
+    }
+  }
+
+  function resetForm() {
+    document.getElementById('json-form').reset();
+    document.getElementById('manual-form').reset();
+    document.getElementById('submit-btn').textContent = 'Upload Track';
+    fetch('/panel/reset-cache', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    })
+      .then(response => response.json())
+      .then(result => {
+        if (result.message) {
+          alert('Cache cleared successfully');
+        } else {
+          alert('Error clearing cache: ' + (result.error || 'Unknown error'));
+        }
+      })
+      .catch(error => {
+        console.error('Reset cache error:', error);
+        alert('Error clearing cache: ' + error.message);
+      });
+  }
+
+  window.onload = checkLogin;
+</script>
       </body>
       </html>
     `;
