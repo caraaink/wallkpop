@@ -1288,3 +1288,6 @@ app.get('/search', async (req, res) => {
     res.status(500).send('Error performing search');
   }
 });
+
+// Export the Express app for serverless environments
+module.exports = app;
