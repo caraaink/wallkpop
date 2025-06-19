@@ -386,7 +386,7 @@ const parseBlogTags = (template, posts, options = {}) => {
 
     // Combine download buttons
     let downloadButtons = link320 || link192 || link128
-      ? `<div class="download-buttons">${linkOriginal}${link320}${link192}${link128}</div>`
+      ? `<div class="download-buttons">${link320}${link192}${link128}</div>`
       : `<div class="download-buttons">${linkOriginal}</div>`;
 
     item = item.replace(/%id%/g, post.id)
@@ -474,14 +474,13 @@ app.get('/', async (req, res) => {
                 </div>
               </td>
               <td align="left">
-                <span>
-                  <a title="Download %title% mp3" href="/track/%id%/:permalink:"><b>%var-artist% - %var-title%</b></span></span></span></span></span></span>
+                  <a title="Download %title% mp3" href="/track/%id%/:permalink:"><b>%var-artist% - %var-title%</b></a><br><span>
                 <font style="font-size:12px;line-height:2;"><i class="fa fa-audio-description" aria-hidden="true"></i> %var-album%</font><br>
                 <font style="font-size:11px;line-height:1.5;">
                   <i class="fa fa-hdd-o" aria-hidden="true"></i> %var-size% MB -
                   <i class="fa fa-clock-o" aria-hidden="true"></i> %var-duration% -
                   <i class="fa fa-calendar" aria-hidden="true"></i> %text% -
-                  <i class="fa fa-file-audio-o" aria-hidden="true"></i> %var-genre% -
+                  <i class="fa fa-file-audio-o" aria-hidden="true"></i> %var-genre% 
                 </font>
               </span></td>
             </tr>
