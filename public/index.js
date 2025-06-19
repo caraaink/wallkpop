@@ -109,7 +109,6 @@ async function deleteGitHubFile(path, sha, message) {
     const cacheKey = `github:${path}`;
     await kv.del(cacheKey);
     await kv.del('github:track_files');
-    // Removed hits and sync cache deletion as hits are disabled
     return response.data.commit.sha;
   } catch (error) {
     console.error(`Error deleting GitHub file ${path}:`, error.response?.data || error.message);
@@ -200,7 +199,7 @@ const getMetaHeader = (post = null, pageUrl = 'https://wallkpop.vercel.app/') =>
   const title = isTrackPage ? `Download ${post.title} MP3 by ${post.artist} | Free Kpop Music` : 'Wallkpop | Download Latest K-Pop Music MP3';
   const description = isTrackPage
     ? `Download ${post.title} by ${post.artist} in MP3 format. Get the latest K-pop songs for free, only for promotional use. Support your favorite artist by buying the original track.`
-    : 'Wedoing are K-Pop lovers who spread the love for k-music. The site does not store any files on its server. All contents are for promotion only. Please support the artists by purchasing their CDs.';
+    : 'We are K-Pop lovers who spread the love for k-music. The site does not store any files on its server. All contents are for promotion only. Please support the artists by purchasing their CDs.';
   const keywords = isTrackPage
     ? `download kpop mp3, ${post.artist}, ${post.title} mp3, free kpop song, kpop download, ${post.title} download, korean pop music`
     : 'KPop, Download KPop, KPop Music, KPop Songs, JPop, Download JPop, JPop Music, JPop Songs, CPop, Download CPop, CPop Music, CPop Songs, Ost KDrama, Lagu Soundtrack KDrama, Lagu Drama Korea, Lagu KPop Terbaru, Tangga Lagu KPop, Download K-Pop Latest Mp3';
@@ -361,7 +360,7 @@ const parseBlogTags = (template, posts, options = {}) => {
       .replace(/%var-url128%/g, post.url128 || post.link || '#')
       .replace(/%var-url192%/g, post.url192 || post.link || '#')
       .replace(/%var-url320%/g, post.url320 || post.link || '#')
-      .replace(/%hits%/g, '') // Disabled hits display
+      .replace(/%hits%/g, '')
       .replace(/%var-lyricstimestamp%/g, post.lyricstimestamp || '')
       .replace(/%var-lyrics%/g, post.lyrics || '')
       .replace(/%var-name%/g, post.name || `${post.artist} - ${post.title}`)
@@ -381,7 +380,7 @@ app.get('/', async (req, res) => {
   try {
     const files = await getAllTrackFiles();
     const posts = [];
-    for (const item of files.slice(0, 10)) {
+    for (const item of files) {
       try {
         const post = await getGitHubFile(item.file);
         posts.push({ ...post, id: item.id });
@@ -390,6 +389,9 @@ app.get('/', async (req, res) => {
         continue;
       }
     }
+
+    // Sort posts by created_at in descending order (newest first)
+    posts.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
     const postList = parseBlogTags(`
       <div class="album-list">
@@ -474,8 +476,12 @@ app.get('/panel', async (req, res) => {
       }
     }
 
+    // Sort posts by created_at in descending order
+    posts.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
     const trackList = parseBlogTags(`
       <div class="track-item">
+        <input type="checkbox" name="track-select" value="%id%" data-file="%file%" data-sha="%sha%">
         <span>%var-artist% - %var-title% (%var-category%)</span>
         <button onclick="editTrack('%id%', '%var-artist%', '%var-title%', '%var-year%', '%var-album%', '%var-genre%', '%var-category%', '%var-duration%', '%var-size%', '%var-size128%', '%var-size192%', '%var-size320%', '%var-bitrate%', '%var-bitrate128%', '%var-bitrate192%', '%var-bitrate320%', '%var-thumb%', '%var-link%', '%var-link2%', '%var-url128%', '%var-url192%', '%var-url320%', '%var-lyricstimestamp%', '%var-lyrics%', '%var-name%', '%file%', '%sha%')">Edit</button>
         <button onclick="deleteTrack('%file%', '%sha%', '%id%')">Delete</button>
@@ -495,17 +501,20 @@ app.get('/panel', async (req, res) => {
           .form-group label { display: block; margin-bottom: 5px; }
           .form-group input, .form-group textarea { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
           .form-group textarea { height: 100px; }
-          .submit-btn, .reset-btn { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 10px; }
+          .submit-btn, .reset-btn, .bulk-delete-btn { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 10px; }
+          .bulk-delete-btn { background: #dc3545; }
           .submit-btn:hover, .reset-btn:hover { background: #0056b3; }
+          .bulk-delete-btn:hover { background: #c82333; }
           .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
           .tab { padding: 10px; cursor: pointer; border: 1px solid #ddd; border-radius: 4px; }
           .tab.active { background: #007bff; color: white; }
           .tab-content { display: none; }
           .tab-content.active { display: block; }
-          .track-item { margin: 10px 0; padding: 10px; border: 1px solid #ddd; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; }
-          .track-item button { padding: 5px 10px; margin-left: 10px; }
-          .track-item button:nth-child(2) { background: #007bff; color: white; }
-          .track-item button:nth-child(3) { background: #dc3545; color: white; }
+          .track-item { margin: 10px 0; padding: 10px; border: 1px solid #ddd; border-radius: 4px; display: flex; align-items: center; gap: 10px; }
+          .track-item input[type="checkbox"] { margin-right: 10px; }
+          .track-item button { padding: 5px 10px; }
+          .track-item button:nth-child(3) { background: #007bff; color: white; }
+          .track-item button:nth-child(4) { background: #dc3545; color: white; }
         </style>
         <script>
           function toggleTab(tabId) {
@@ -564,6 +573,36 @@ app.get('/panel', async (req, res) => {
                 }
               } catch (error) {
                 alert('Error deleting track: ' + error.message);
+              }
+            }
+          }
+
+          async function bulkDeleteTracks() {
+            const selectedTracks = document.querySelectorAll('input[name="track-select"]:checked');
+            if (selectedTracks.length === 0) {
+              alert('Please select at least one track to delete.');
+              return;
+            }
+            if (confirm(`Are you sure you want to delete ${selectedTracks.length} track(s)?`)) {
+              try {
+                const tracksToDelete = Array.from(selectedTracks).map(checkbox => ({
+                  file: checkbox.dataset.file,
+                  sha: checkbox.dataset.sha
+                }));
+                const response = await fetch('/panel/bulk-delete', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ tracks: tracksToDelete })
+                });
+                const result = await response.json();
+                if (response.ok) {
+                  alert('Tracks deleted successfully');
+                  location.reload();
+                } else {
+                  alert('Error deleting tracks: ' + result.error);
+                }
+              } catch (error) {
+                alert('Error deleting tracks: ' + error.message);
               }
             }
           }
@@ -711,6 +750,9 @@ app.get('/panel', async (req, res) => {
             </form>
           </div>
           <h2>Existing Tracks</h2>
+          <div>
+            <button class="bulk-delete-btn" onclick="bulkDeleteTracks()">Delete Selected</button>
+          </div>
           <div id="track-list">
             ${trackList}
           </div>
@@ -734,21 +776,25 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
       const fileContent = await fs.readFile(req.file.path, 'utf-8');
       try {
         trackData = JSON.parse(fileContent);
-        // If JSON is an array, process each item
+        // Normalize year field to ensure it's a number
         if (Array.isArray(trackData)) {
-          const results = [];
-          for (const track of trackData) {
-            const result = await processTrack(track);
-            results.push(result);
-          }
-          await fs.unlink(req.file.path);
-          return res.json({ message: 'Tracks uploaded successfully', results });
+          trackData = trackData.map(track => ({
+            ...track,
+            year: parseInt(track.year, 10)
+          }));
         } else {
-          trackData = [trackData]; // Convert single object to array for consistent processing
-          const result = await processTrack(trackData[0]);
-          await fs.unlink(req.file.path);
-          return res.json({ message: 'Track uploaded successfully', results: [result] });
+          trackData = [{
+            ...trackData,
+            year: parseInt(trackData.year, 10)
+          }];
         }
+        const results = [];
+        for (const track of trackData) {
+          const result = await processTrack(track);
+          results.push(result);
+        }
+        await fs.unlink(req.file.path);
+        return res.json({ message: 'Tracks uploaded successfully', results });
       } catch (parseError) {
         await fs.unlink(req.file.path);
         return res.status(400).send('Invalid JSON file');
@@ -909,9 +955,18 @@ async function processTrack(trackData) {
 // Handle track deletion
 app.post('/panel/delete', async (req, res) => {
   try {
-    const { file, sha } = req.body;
+    let { file, sha } = req.body;
     if (!file || !sha) {
       return res.status(400).json({ error: 'Missing file or sha' });
+    }
+
+    // Normalize file path
+    file = file.trim();
+    if (!file.startsWith('file/')) {
+      file = `file/${file}`;
+    }
+    if (!file.endsWith('.json')) {
+      file = `${file}.json`;
     }
 
     // Verify file exists before attempting deletion
@@ -926,6 +981,44 @@ app.post('/panel/delete', async (req, res) => {
   } catch (error) {
     console.error('Error deleting track:', error);
     res.status(500).json({ error: `Error deleting track: ${error.response?.data?.message || error.message}` });
+  }
+});
+
+// Handle bulk track deletion
+app.post('/panel/bulk-delete', async (req, res) => {
+  try {
+    const { tracks } = req.body;
+    if (!tracks || !Array.isArray(tracks) || tracks.length === 0) {
+      return res.status(400).json({ error: 'No tracks selected for deletion' });
+    }
+
+    const errors = [];
+    for (const { file, sha } of tracks) {
+      try {
+        let normalizedFile = file.trim();
+        if (!normalizedFile.startsWith('file/')) {
+          normalizedFile = `file/${normalizedFile}`;
+        }
+        if (!normalizedFile.endsWith('.json')) {
+          normalizedFile = `${normalizedFile}.json`;
+        }
+
+        // Verify file exists
+        await getGitHubFile(normalizedFile);
+        await deleteGitHubFile(normalizedFile, sha, `Delete track: ${normalizedFile}`);
+      } catch (error) {
+        errors.push(`Failed to delete ${file}: ${error.message}`);
+      }
+    }
+
+    if (errors.length > 0) {
+      return res.status(500).json({ error: `Some tracks failed to delete: ${errors.join('; ')}` });
+    }
+
+    res.json({ message: 'Tracks deleted successfully' });
+  } catch (error) {
+    console.error('Error during bulk deletion:', error);
+    res.status(500).json({ error: `Error during bulk deletion: ${error.message}` });
   }
 });
 
@@ -1113,6 +1206,8 @@ app.get('/search/:query', async (req, res) => {
         continue;
       }
     }
+    // Sort search results by created_at in descending order
+    posts.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
     const filteredPosts = posts.slice(0, 40);
 
     const searchResults = parseBlogTags(`
