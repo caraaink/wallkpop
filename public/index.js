@@ -701,74 +701,53 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
       const fileContent = await fs.readFile(req.file.path, 'utf-8');
       try {
         trackData = JSON.parse(fileContent);
-        if (Array.isArray(trackData)) {
-          trackData = trackData.map(track => ({
+        if (!Array.isArray(trackData)) {
+          trackData = [trackData];
+        }
+        trackData = trackData.map(track => {
+          const yearNum = parseInt(track.year, 10);
+          const idNum = track.id ? parseInt(track.id, 10) : undefined;
+          if (isNaN(yearNum) || yearNum === 0) {
+            throw new Error('Invalid year value in JSON');
+          }
+          if (idNum && isNaN(idNum)) {
+            throw new Error('Invalid ID value in JSON');
+          }
+          return {
             ...track,
-            id: track.id ? parseInt(track.id, 10) : undefined,
-            year: parseInt(track.year, 10) || 0,
-            album: track.album || "",
-            genre: track.genre || "",
-            category: track.category || "",
-            duration: track.duration || "",
-            size: track.size || "",
-            size128: track.size128 || "",
-            size192: track.size192 || "",
-            size320: track.size320 || "",
-            bitrate: track.bitrate || "192",
-            bitrate128: track.bitrate128 || "128",
-            bitrate192: track.bitrate192 || "192",
-            bitrate320: track.bitrate320 || "320",
-            thumb: track.thumb || "",
-            link: track.link || "",
-            link2: track.link2 || "",
-            url128: track.url128 || "",
-            url192: track.url192 || "",
-            url320: track.url320 || "",
-            lyricstimestamp: track.lyricstimestamp || "",
-            lyrics: track.lyrics || "",
-            name: track.name || `${track.artist} - ${track.title}`,
-            hits: track.hits || "0"
-          }));
-        } else {
-          trackData = [{
-            ...trackData,
-            id: trackData.id ? parseInt(trackData.id, 10) : undefined,
-            year: parseInt(trackData.year, 10) || 0,
-            album: trackData.album || "",
-            genre: trackData.genre || "",
-            category: trackData.category || "",
-            duration: trackData.duration || "",
-            size: trackData.size || "",
-            size128: trackData.size128 || "",
-            size192: trackData.size192 || "",
-            size320: trackData.size320 || "",
-            bitrate: trackData.bitrate || "192",
-            bitrate128: trackData.bitrate128 || "128",
-            bitrate192: trackData.bitrate192 || "192",
-            bitrate320: trackData.bitrate320 || "320",
-            thumb: trackData.thumb || "",
-            link: trackData.link || "",
-            link2: trackData.link2 || "",
-            url128: trackData.url128 || "",
-            url192: trackData.url192 || "",
-            url320: trackData.url320 || "",
-            lyricstimestamp: trackData.lyricstimestamp || "",
-            lyrics: trackData.lyrics || "",
-            name: trackData.name || `${trackData.artist} - ${trackData.title}`,
-            hits: trackData.hits || "0"
-          }];
-        }
-        const results = [];
-        for (const track of trackData) {
-          const result = await processTrack(track);
-          results.push(result);
-        }
-        await fs.unlink(req.file.path);
-        return res.json({ message: 'Tracks uploaded successfully', results });
+            id: idNum,
+            year: yearNum,
+            artist: track.artist?.trim() || '',
+            title: track.title?.trim() || '',
+            album: track.album?.trim() || '',
+            genre: track.genre?.trim() || '',
+            category: track.category?.trim() || '',
+            duration: track.duration?.trim() || '',
+            size: track.size?.trim() || '',
+            size128: track.size128?.trim() || '',
+            size192: track.size192?.trim() || '',
+            size320: track.size320?.trim() || '',
+            bitrate: track.bitrate?.trim() || '192',
+            bitrate128: track.bitrate128?.trim() || '128',
+            bitrate192: track.bitrate192?.trim() || '192',
+            bitrate320: track.bitrate320?.trim() || '320',
+            thumb: track.thumb?.trim() || '',
+            link: track.link?.trim() || '',
+            link2: track.link2?.trim() || '',
+            url128: track.url128?.trim() || '',
+            url192: track.url192?.trim() || '',
+            url320: track.url320?.trim() || '',
+            lyricstimestamp: track.lyricstimestamp?.trim() || '',
+            lyrics: track.lyrics?.trim() || '',
+            name: track.name?.trim() || `${track.artist?.trim() || ''} - ${track.title?.trim() || ''}`,
+            hits: track.hits?.trim() || '0'
+          };
+        });
       } catch (parseError) {
         await fs.unlink(req.file.path);
         return res.status(400).send('Invalid JSON file: ' + parseError.message);
       }
+      await fs.unlink(req.file.path);
     } else {
       const {
         'var-id': id,
@@ -805,39 +784,43 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
         return res.status(400).send('Missing required fields: artist, title, or year');
       }
       const yearNum = parseInt(year, 10);
+      const idNum = id ? parseInt(id, 10) : undefined;
       if (isNaN(yearNum) || yearNum === 0) {
         return res.status(400).send('Invalid year value');
       }
+      if (idNum && isNaN(idNum)) {
+        return res.status(400).send('Invalid ID value');
+      }
 
       trackData = [{
-        artist,
-        title,
+        artist: artist.trim(),
+        title: title.trim(),
         year: yearNum,
-        album: album || "",
-        genre: genre || "",
-        category: category || "",
-        duration: duration || "",
-        size: size || "",
-        size128: size128 || "",
-        size192: size192 || "",
-        size320: size320 || "",
-        bitrate: bitrate || "192",
-        bitrate128: bitrate128 || "128",
-        bitrate192: bitrate192 || "192",
-        bitrate320: bitrate320 || "320",
-        thumb: thumb || "",
-        link: link || "",
-        link2: link2 || "",
-        url128: url128 || "",
-        url192: url192 || "",
-        url320: url320 || "",
-        lyricstimestamp: lyricstimestamp || "",
-        lyrics: lyrics || "",
-        name: name || `${artist} - ${title}`,
-        id: id ? parseInt(id, 10) : undefined,
+        album: album?.trim() || '',
+        genre: genre?.trim() || '',
+        category: category?.trim() || '',
+        duration: duration?.trim() || '',
+        size: size?.trim() || '',
+        size128: size128?.trim() || '',
+        size192: size192?.trim() || '',
+        size320: size320?.trim() || '',
+        bitrate: bitrate?.trim() || '192',
+        bitrate128: bitrate128?.trim() || '128',
+        bitrate192: bitrate192?.trim() || '192',
+        bitrate320: bitrate320?.trim() || '320',
+        thumb: thumb?.trim() || '',
+        link: link?.trim() || '',
+        link2: link2?.trim() || '',
+        url128: url128?.trim() || '',
+        url192: url192?.trim() || '',
+        url320: url320?.trim() || '',
+        lyricstimestamp: lyricstimestamp?.trim() || '',
+        lyrics: lyrics?.trim() || '',
+        name: name?.trim() || `${artist.trim()} - ${title.trim()}`,
+        id: idNum,
         file,
         sha,
-        hits: hits || "0"
+        hits: hits?.trim() || '0'
       }];
     }
 
@@ -861,8 +844,12 @@ async function processTrack(trackData) {
   if (isNaN(yearNum) || yearNum === 0) {
     throw new Error('Invalid year value in JSON');
   }
+  const idNum = trackData.id ? parseInt(trackData.id, 10) : undefined;
+  if (trackData.id && isNaN(idNum)) {
+    throw new Error('Invalid ID value in JSON');
+  }
 
-  let newId = trackData.id;
+  let newId = idNum;
   let filePath = trackData.file;
   let sha = trackData.sha;
 
@@ -886,29 +873,29 @@ async function processTrack(trackData) {
     artist: trackData.artist,
     title: trackData.title,
     year: yearNum,
-    album: trackData.album || "",
-    genre: trackData.genre || "",
-    category: trackData.category || "",
-    duration: trackData.duration || "",
-    size: trackData.size || "",
-    size128: trackData.size128 || "",
-    size192: trackData.size192 || "",
-    size320: trackData.size320 || "",
-    bitrate: trackData.bitrate || "192",
-    bitrate128: trackData.bitrate128 || "128",
-    bitrate192: trackData.bitrate192 || "192",
-    bitrate320: trackData.bitrate320 || "320",
-    thumb: trackData.thumb || "",
-    link: trackData.link || "",
-    link2: trackData.link2 || "",
-    url128: trackData.url128 || "",
-    url192: trackData.url192 || "",
-    url320: trackData.url320 || "",
-    lyricstimestamp: trackData.lyricstimestamp || "",
-    lyrics: trackData.lyrics || "",
+    album: trackData.album || '',
+    genre: trackData.genre || '',
+    category: trackData.category || '',
+    duration: trackData.duration || '',
+    size: trackData.size || '',
+    size128: trackData.size128 || '',
+    size192: trackData.size192 || '',
+    size320: trackData.size320 || '',
+    bitrate: trackData.bitrate || '192',
+    bitrate128: trackData.bitrate128 || '128',
+    bitrate192: trackData.bitrate192 || '192',
+    bitrate320: trackData.bitrate320 || '320',
+    thumb: trackData.thumb || '',
+    link: trackData.link || '',
+    link2: trackData.link2 || '',
+    url128: trackData.url128 || '',
+    url192: trackData.url192 || '',
+    url320: trackData.url320 || '',
+    lyricstimestamp: trackData.lyricstimestamp || '',
+    lyrics: trackData.lyrics || '',
     name: trackData.name || `${trackData.artist} - ${trackData.title}`,
     created_at: trackData.created_at || new Date().toISOString(),
-    hits: trackData.hits || "0"
+    hits: trackData.hits || '0'
   };
 
   const message = trackData.id
@@ -1187,32 +1174,32 @@ app.post('/api/post', async (req, res) => {
 
     const trackData = {
       id: newId,
-      artist,
-      title,
+      artist: artist.trim(),
+      title: title.trim(),
       year: yearNum,
-      album: album || "",
-      genre: genre || "",
-      category: category || "",
-      duration: duration || "",
-      size: size || "",
-      size128: size128 || "",
-      size192: size192 || "",
-      size320: size320 || "",
-      bitrate: bitrate || "192",
-      bitrate128: bitrate128 || "128",
-      bitrate192: bitrate192 || "192",
-      bitrate320: bitrate320 || "320",
-      thumb: thumb || "",
-      link: link || "",
-      link2: link2 || "",
-      url128: url128 || "",
-      url192: url192 || "",
-      url320: url320 || "",
-      lyricstimestamp: lyricstimestamp || "",
-      lyrics: lyrics || "",
-      name: name || `${artist} - ${title}`,
+      album: album?.trim() || '',
+      genre: genre?.trim() || '',
+      category: category?.trim() || '',
+      duration: duration?.trim() || '',
+      size: size?.trim() || '',
+      size128: size128?.trim() || '',
+      size192: size192?.trim() || '',
+      size320: size320?.trim() || '',
+      bitrate: bitrate?.trim() || '192',
+      bitrate128: bitrate128?.trim() || '128',
+      bitrate192: bitrate192?.trim() || '192',
+      bitrate320: bitrate320?.trim() || '320',
+      thumb: thumb?.trim() || '',
+      link: link?.trim() || '',
+      link2: link2?.trim() || '',
+      url128: url128?.trim() || '',
+      url192: url192?.trim() || '',
+      url320: url320?.trim() || '',
+      lyricstimestamp: lyricstimestamp?.trim() || '',
+      lyrics: lyrics?.trim() || '',
+      name: name?.trim() || `${artist.trim()} - ${title.trim()}`,
       created_at: new Date().toISOString(),
-      hits: hits || "0"
+      hits: hits?.trim() || '0'
     };
 
     await updateGitHubFile(filePath, trackData, `Add track ${newId}: ${artist} - ${title}`);
