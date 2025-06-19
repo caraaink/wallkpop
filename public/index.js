@@ -157,6 +157,7 @@ const getFormattedDate = (format) => {
   const pad = (n) => n.toString().padStart(2, '0');
   const formats = {
     'Y-m-d': `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`,
+    'd-m-Y': `${pad(date.getDate())}-${pad(date.getMonth() + 1)}-${date.getFullYear()}`,
     'Y': `${date.getFullYear()}`,
     'H:i': `${pad(date.getHours())}:${pad(date.getMinutes())}`
   };
@@ -366,6 +367,28 @@ const parseBlogTags = (template, posts, options = {}) => {
                .replace(/\t/g, '\\t');
     };
 
+    // Define download link templates
+    const linkOriginal = `<a href="//meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(post.thumb || '')}&to-size=${encodeURIComponent(post.size || '')}&to-link2=${encodeURIComponent(post.link2 || '')}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(post.link || '')}&to-sizeori=${encodeURIComponent(post.size || '')}" target="_blank">
+      <button class="downd bitrate-192"><span class="medium-label">MQ</span><div class="title">Download Now</div><div class="size">(${post.size || ''})</div><span class="bitrate">${post.bitrate || '192'} kb/s</span></button>
+    </a>`;
+
+    const link320 = post.url320 ? `<a href="//meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(post.thumb || '')}&to-size=${encodeURIComponent(post.size320 || '')}&to-link2=${encodeURIComponent(post.url320 || '')}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(post.link || '')}&to-sizeori=${encodeURIComponent(post.size320 || '')}" target="_blank">
+      <button class="downd bitrate-320"><span class="hq-label">HQ</span><div class="title">Download Now</div><div class="size">(${post.size320 || ''})</div><span class="bitrate">${post.bitrate320 || '320'} kb/s</span></button>
+    </a>` : '';
+
+    const link192 = post.url192 ? `<a href="//meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(post.thumb || '')}&to-size=${encodeURIComponent(post.size192 || '')}&to-link2=${encodeURIComponent(post.url192 || '')}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(post.link || '')}&to-sizeori=${encodeURIComponent(post.size192 || '')}" target="_blank">
+      <button class="downd bitrate-192"><span class="medium-label">MQ</span><div class="title">Download Now</div><div class="size">(${post.size192 || ''})</div><span class="bitrate">${post.bitrate192 || '192'} kb/s</span></button>
+    </a>` : '';
+
+    const link128 = post.url128 ? `<a href="//meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(post.thumb || '')}&to-size=${encodeURIComponent(post.size128 || '')}&to-link2=${encodeURIComponent(post.url128 || '')}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(post.link || '')}&to-sizeori=${encodeURIComponent(post.size128 || '')}" target="_blank">
+      <button class="downd bitrate-128"><span class="low-label">LQ</span><div class="title">Download Now</div><div class="size">(${post.size128 || ''})</div><span class="bitrate">${post.bitrate128 || '128'} kb/s</span></button>
+    </a>` : '';
+
+    // Combine download buttons
+    let downloadButtons = link320 || link192 || link128
+      ? `<div class="download-buttons">${linkOriginal}${link320}${link192}${link128}</div>`
+      : `<div class="download-buttons">${linkOriginal}</div>`;
+
     item = item.replace(/%id%/g, post.id)
       .replace(/%var-artist%/g, post.artist)
       .replace(/%var-title%/g, post.title)
@@ -397,13 +420,18 @@ const parseBlogTags = (template, posts, options = {}) => {
       .replace(/%text%/g, post.year || '')
       .replace(/:url-1\(:to-file:\):/g, `/track/${post.id}/${permalink}`)
       .replace(/:page_url:/g, `https://wallkpop.vercel.app/track/${post.id}/${permalink}`)
-      .replace(/:permalink:/g, permalink);
+      .replace(/:permalink:/g, permalink)
+      .replace(/%var-link_original%/g, linkOriginal)
+      .replace(/%var-link320%/g, link320)
+      .replace(/%var-link192%/g, link192)
+      .replace(/%var-link128%/g, link128)
+      .replace(/%download-buttons%/g, downloadButtons);
 
     item = item.replace(/<tr><td width="30%">Album<\/td><td>:<\/td><td>%var-album%<\/td><\/tr>/g, 
       renderIfNotEmpty(post.album, '<tr><td width="30%">Album</td><td>:</td><td>%value%</td></tr>'))
       .replace(/<tr><td>Genre<\/td><td>:<\/td><td>%var-genre%<\/td><\/tr>/g, 
       renderIfNotEmpty(post.genre, '<tr><td>Genre</td><td>:</td><td>%value%</td></tr>'))
-      .replace(/<tr><td>Category<\/td><td>:<\/td><td>%var-category%<\/td><\/tr>/g, 
+      .replace(/<tr><td>Category<\/td><td>%var-category%<\/td>/g, 
       renderIfNotEmpty(post.category, '<tr><td>Category</td><td>:</td><td>%value%</td></tr>'))
       .replace(/<tr><td>Duration<\/td><td>:<\/td><td>%var-duration% minutes<\/td><\/tr>/g, 
       renderIfNotEmpty(post.duration, '<tr><td>Duration</td><td>:</td><td>%value% minutes</td></tr>'));
@@ -447,16 +475,15 @@ app.get('/', async (req, res) => {
               </td>
               <td align="left">
                 <span>
-                  <a title="Download %title% mp3" href="/track/%id%/:permalink:"><b>%var-artist% - %var-title%</b></a><br>
-                  <font style="font-size:12px;line-height:2;"><i class="fa fa-audio-description" aria-hidden="true"></i> %var-album%</font><br>
-                  <font style="font-size:11px;line-height:1.5;">
-                    <i class="fa fa-hdd-o" aria-hidden="true"></i> %var-size% MB -
-                    <i class="fa fa-clock-o" aria-hidden="true"></i> %var-duration% -
-                    <i class="fa fa-calendar" aria-hidden="true"></i> %text% -
-                    <i class="fa fa-file-audio-o" aria-hidden="true"></i> %var-genre%
-                  </font>
-                </span>
-              </td>
+                  <a title="Download %title% mp3" href="/track/%id%/:permalink:"><b>%var-artist% - %var-title%</b></span></span></span></span></span></span>
+                <font style="font-size:12px;line-height:2;"><i class="fa fa-audio-description" aria-hidden="true"></i> %var-album%</font><br>
+                <font style="font-size:11px;line-height:1.5;">
+                  <i class="fa fa-hdd-o" aria-hidden="true"></i> %var-size% MB -
+                  <i class="fa fa-clock-o" aria-hidden="true"></i> %var-duration% -
+                  <i class="fa fa-calendar" aria-hidden="true"></i> %text% -
+                  <i class="fa fa-file-audio-o" aria-hidden="true"></i> %var-genre% -
+                </font>
+              </span></td>
             </tr>
           </tbody>
         </table>
@@ -466,20 +493,25 @@ app.get('/', async (req, res) => {
 
     const html = `
       <!DOCTYPE html>
-      <html>
+      <html lang="en">
       <head>
         ${getMetaHeader(null, `https://wallkpop.vercel.app${page > 1 ? `/page/${page}` : ''}`)}
       </head>
       <body>
         ${getHeader()}
         <div id="content">
-          <h1>Latest Uploaded Tracks</h1>
+          <h3 style="font-size: 16px; margin: 0 0 8px 0; background: #ba412c; color: #ffffff; display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; border-radius: 4px;">
+            <span>Latest Uploaded Tracks</span>
+            <span style="background: #ffffff; color: #ba412c; font-size: 12px; padding: 2px 6px; border-radius: 3px; display: inline-block;">
+                <i class="fa fa-calendar" aria-hidden="true"></i> ${getFormattedDate('d-m-Y')}
+            </span>
+          </h3>
           ${postList}
           ${pagination}
         </div>
         ${getFooter(`https://wallkpop.vercel.app${page > 1 ? `/page/${page}` : ''}`)}
       </body>
-      </html>
+    </html>
     `;
     res.send(html);
   } catch (error) {
@@ -543,20 +575,25 @@ app.get('/page/:page', async (req, res) => {
 
     const html = `
       <!DOCTYPE html>
-      <html>
+      <html lang="en">
       <head>
         ${getMetaHeader(null, `https://wallkpop.vercel.app/page/${page}`)}
       </head>
       <body>
         ${getHeader()}
         <div id="content">
-          <h1>Latest Uploaded Tracks</h1>
+          <h3 style="font-size: 16px; margin: 0 0 8px 0; background: #ba412c; color: #ffffff; display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; border-radius: 4px;">
+            <span>Latest Uploaded Tracks</span>
+            <span style="background: #ffffff; color: #ba412c; font-size: 12px; padding: 2px 6px; border-radius: 3px; display: inline-block;">
+              <i class="fa fa-calendar" aria-hidden="true"></i> ${getFormattedDate('d-m-Y')}
+            </span>
+          </h3>
           ${postList}
           ${pagination}
         </div>
         ${getFooter(`https://wallkpop.vercel.app/page/${page}`)}
       </body>
-      </html>
+    </html>
     `;
     res.send(html);
   } catch (error) {
@@ -589,7 +626,7 @@ app.get('/panel', async (req, res) => {
 
     const html = `
       <!DOCTYPE html>
-      <html>
+      <html lang="en">
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1134,17 +1171,7 @@ app.get('/track/:id/:permalink', async (req, res) => {
           <script>const lyricsText = "%var-lyricstimestamp%";</script>
           <script src="https://cdn.jsdelivr.net/gh/caraaink/meownime@refs/heads/main/javascript/audio-lyrics-timestamp.js"></script>
           <div style="text-align: center;"><br>
-            <div class="download-buttons">
-              <a href="//meownime.wapkizs.com/page-convert.html?to-thumb=%var-thumb%&to-size=%var-size320%&to-link2=%var-url320%&to-artist=%var-artist%&to-title=%var-title%&to-link=%var-link%&to-sizeori=%var-size320%" target="_blank">
-                <button class="downd bitrate-320"><span class="hq-label">HQ</span><div class="title">Download Now</div><div class="size">(%var-size320%)</div><span class="bitrate">%var-bitrate320% kb/s</span></button>
-              </a>
-              <a href="//meownime.wapkizs.com/page-convert.html?to-thumb=%var-thumb%&to-size=%var-size192%&to-link2=%var-url192%&to-artist=%var-artist%&to-title=%var-title%&to-link=%var-link%&to-sizeori=%var-size192%" target="_blank">
-                <button class="downd bitrate-192"><span class="medium-label">MQ</span><div class="title">Download Now</div><div class="size">(%var-size192%)</div><span class="bitrate">%var-bitrate192% kb/s</span></button>
-              </a>
-              <a href="//meownime.wapkizs.com/page-convert.html?to-thumb=%var-thumb%&to-size=%var-size128%&to-link2=%var-url128%&to-artist=%var-artist%&to-title=%var-title%&to-link=%var-link%&to-sizeori=%var-size128%" target="_blank">
-                <button class="downd bitrate-128"><span class="low-label">LQ</span><div class="title">Download Now</div><div class="size">(%var-size128%)</div><span class="bitrate">%var-bitrate128% kb/s</span></button>
-              </a>
-            </div>
+            %download-buttons%
           </div>
           <br>
           <div class="breadcrumb" itemscope itemtype="https://schema.org/BreadcrumbList">
@@ -1180,7 +1207,7 @@ app.get('/track/:id/:permalink', async (req, res) => {
 
     const html = `
       <!DOCTYPE html>
-      <html>
+      <html lang="en">
       <head>
         ${getMetaHeader(post, `https://wallkpop.vercel.app/track/${id}/${req.params.permalink}`)}
       </head>
@@ -1195,7 +1222,7 @@ app.get('/track/:id/:permalink', async (req, res) => {
         </div>
         ${getFooter(`https://wallkpop.vercel.app/track/${id}/${req.params.permalink}`)}
       </body>
-      </html>
+    </html>
     `;
     res.send(html);
   } catch (error) {
@@ -1265,7 +1292,7 @@ app.get('/search', async (req, res) => {
 
     const html = `
       <!DOCTYPE html>
-      <html>
+      <html lang="en">
       <head>
         ${getMetaHeader(null, `https://wallkpop.vercel.app/search?q=${encodeURIComponent(req.query.q || '')}${page > 1 ? `&page=${page}` : ''}`, req.query.q || '')}
       </head>
@@ -1278,9 +1305,9 @@ app.get('/search', async (req, res) => {
             ${pagination}
           </div>
         </div>
-        ${getFooter(`https://wallkpop.vercel.app/search?q=${encodeURIComponent(req.query.q || '')}${page > 1 ? `&page=${page}` : ''}`)}
+        ${getFooter(`https://wallkpop.vercel.app/search?q=${encodeURIComponent(req.query.q || '')}${page > 1 ? '&page=' + page : ''}`)}
       </body>
-      </html>
+    </html>
     `;
     res.send(html);
   } catch (error) {
