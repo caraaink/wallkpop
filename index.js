@@ -715,38 +715,13 @@ app.get('/panel', async (req, res) => {
   }
   .form-container { 
     max-width: 900px; 
-    margin: 80px auto 30px auto; /* Tingkatkan margin-top menjadi 80px untuk ruang atas */
+    margin: 40px auto; 
     padding: 20px; 
     background: white; 
     border-radius: 10px; 
     box-shadow: 0 0 10px rgba(0,0,0,0.1); 
     box-sizing: border-box; 
-  }
-  .tabs { 
-    display: flex; 
-    gap: 10px; 
-    margin-bottom: 20px; 
-    position: sticky; 
-    top: 20px; /* Tetap di atas dengan jarak 20px dari atas */
-    background: white; 
-    z-index: 10; 
-    padding: 10px 0; 
-  }
-  .tab { 
-    padding: 10px; 
-    cursor: pointer; 
-    border: 1px solid #ddd; 
-    border-radius: 4px; 
-  }
-  .tab.active { 
-    background: #007bff; 
-    color: white; 
-  }
-  .tab-content { 
-    display: none; 
-  }
-  .tab-content.active { 
-    display: block; 
+    padding-top: 20px; 
   }
   .form-group { 
     margin-bottom: 20px; 
@@ -799,8 +774,29 @@ app.get('/panel', async (req, res) => {
   .submit-btn:hover, .reset-btn:hover { 
     background: #0056b3; 
   }
+  .tabs { 
+    display: flex; 
+    gap: 10px; 
+    margin-bottom: 20px; 
+  }
+  .tab { 
+    padding: 10px; 
+    cursor: pointer; 
+    border: 1px solid #ddd; 
+    border-radius: 4px; 
+  }
+  .tab.active { 
+    background: #007bff; 
+    color: white; 
+  }
+  .tab-content { 
+    display: none; 
+  }
+  .tab-content.active { 
+    display: block; 
+  }
 </style>
-        <script>
+<script>
   function checkLogin() {
     const loginData = localStorage.getItem('panelLogin');
     if (loginData) {
@@ -848,11 +844,8 @@ app.get('/panel', async (req, res) => {
     document.getElementById(tabId + '-content').classList.add('active');
     const formContainer = document.querySelector('.form-container');
     if (formContainer) {
-      // Hitung tinggi tab dan header untuk offset
-      const tabHeight = document.querySelector('.tabs')?.offsetHeight || 0;
-      const headerOffset = 20; // Jarak dari atas
       window.scrollTo({
-        top: formContainer.offsetTop - tabHeight - headerOffset,
+        top: formContainer.offsetTop - 20,
         behavior: 'smooth'
       });
     }
