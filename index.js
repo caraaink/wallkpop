@@ -237,8 +237,8 @@ const getMetaHeader = (post = null, pageUrl = 'https://wallkpop.vercel.app/', qu
     <meta name="robots" content="index, follow">
     <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico">
     <link rel="canonical" href="${pageUrl}">
-    <link rel="stylesheet" href="/plyr.css" />
-    <script src="/plyr.polyfilled.js"></script>
+    <link rel="stylesheet" href="https://rawcdn.githack.com/caraaink/otakudesu/1ff200e0bc05d43443b4944b46532c4b4c3cc275/plyr.css" />
+    <script src="https://rawcdn.githack.com/caraaink/otakudesu/1ff200e0bc05d43443b4944b46532c4b4c3cc275/plyr.polyfilled.js"></script>
     <link href="https://stackpath.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet" integrity="sha384-wvfXpqpZZVQGK6TAh5PVlGOfQNHSoD2xbE+QkPxCAFlNEevoEH3Sl0sibVcOQVnN" crossorigin="anonymous">
     <link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="/style.css"/>
@@ -346,6 +346,12 @@ const parseBlogTags = (template, posts, options = {}) => {
   const { limit = 40, noMessage = '<center>No File</center>', to = ':url-1(:to-file:):' } = options;
   if (!posts || posts.length === 0) return noMessage;
 
+  // Function to remove http:// or https:// from URLs
+  const stripProtocol = (url) => {
+    if (!url) return '';
+    return url.replace(/^https?:\/\//, '//');
+  };
+
   let result = '';
   posts.slice(0, limit).forEach((post, index) => {
     let item = template;
@@ -369,20 +375,20 @@ const parseBlogTags = (template, posts, options = {}) => {
                .replace(/\t/g, '\\t');
     };
 
-    // Define download link templates
-    const linkOriginal = `<a href="//meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(post.thumb || '')}&to-size=${encodeURIComponent(post.size || '')}&to-link2=${encodeURIComponent(post.link2 || '')}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(post.link || '')}&to-sizeori=${encodeURIComponent(post.size || '')}" target="_blank">
+    // Define download link templates with protocol stripped
+    const linkOriginal = `<a href="https://meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(stripProtocol(post.thumb || ''))}&to-size=${encodeURIComponent(post.size || '')}&to-link2=${encodeURIComponent(stripProtocol(post.link2 || ''))}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(stripProtocol(post.link || ''))}&to-sizeori=${encodeURIComponent(post.size || '')}" target="_blank">
       <button class="downd bitrate-192"><span class="medium-label">MQ</span><div class="title">Download Now</div><div class="size">(${post.size || ''})</div><span class="bitrate">${post.bitrate || '192'} kb/s</span></button>
     </a>`;
 
-    const link320 = post.url320 ? `<a href="//meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(post.thumb || '')}&to-size=${encodeURIComponent(post.size320 || '')}&to-link2=${encodeURIComponent(post.url320 || '')}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(post.link || '')}&to-sizeori=${encodeURIComponent(post.size320 || '')}" target="_blank">
+    const link320 = post.url320 ? `<a href="https://meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(stripProtocol(post.thumb || ''))}&to-size=${encodeURIComponent(post.size320 || '')}&to-link2=${encodeURIComponent(stripProtocol(post.url320 || ''))}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(stripProtocol(post.link || ''))}&to-sizeori=${encodeURIComponent(post.size320 || '')}" target="_blank">
       <button class="downd bitrate-320"><span class="hq-label">HQ</span><div class="title">Download Now</div><div class="size">(${post.size320 || ''})</div><span class="bitrate">${post.bitrate320 || '320'} kb/s</span></button>
     </a>` : '';
 
-    const link192 = post.url192 ? `<a href="//meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(post.thumb || '')}&to-size=${encodeURIComponent(post.size192 || '')}&to-link2=${encodeURIComponent(post.url192 || '')}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(post.link || '')}&to-sizeori=${encodeURIComponent(post.size192 || '')}" target="_blank">
+    const link192 = post.url192 ? `<a href="https://meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(stripProtocol(post.thumb || ''))}&to-size=${encodeURIComponent(post.size192 || '')}&to-link2=${encodeURIComponent(stripProtocol(post.url192 || ''))}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(stripProtocol(post.link || ''))}&to-sizeori=${encodeURIComponent(post.size192 || '')}" target="_blank">
       <button class="downd bitrate-192"><span class="medium-label">MQ</span><div class="title">Download Now</div><div class="size">(${post.size192 || ''})</div><span class="bitrate">${post.bitrate192 || '192'} kb/s</span></button>
     </a>` : '';
 
-    const link128 = post.url128 ? `<a href="//meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(post.thumb || '')}&to-size=${encodeURIComponent(post.size128 || '')}&to-link2=${encodeURIComponent(post.url128 || '')}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(post.link || '')}&to-sizeori=${encodeURIComponent(post.size128 || '')}" target="_blank">
+    const link128 = post.url128 ? `<a href="https://meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(stripProtocol(post.thumb || ''))}&to-size=${encodeURIComponent(post.size128 || '')}&to-link2=${encodeURIComponent(stripProtocol(post.url128 || ''))}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(stripProtocol(post.link || ''))}&to-sizeori=${encodeURIComponent(post.size128 || '')}" target="_blank">
       <button class="downd bitrate-128"><span class="low-label">LQ</span><div class="title">Download Now</div><div class="size">(${post.size128 || ''})</div><span class="bitrate">${post.bitrate128 || '128'} kb/s</span></button>
     </a>` : '';
 
@@ -501,6 +507,7 @@ app.get('/', async (req, res) => {
       <body>
         ${getHeader()}
         <div id="content">
+        <div class="album">
           <h3 style="font-size: 16px; margin: 0 0 8px 0; background: #ba412c; color: #ffffff; display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; border-radius: 4px;">
             <span>Latest Uploaded Tracks</span>
             <span style="background: #ffffff; color: #ba412c; font-size: 12px; padding: 2px 6px; border-radius: 3px; display: inline-block;">
@@ -509,7 +516,7 @@ app.get('/', async (req, res) => {
           </h3>
           ${postList}
           ${pagination}
-        </div>
+        </div></div>
         ${getFooter(`https://wallkpop.vercel.app${page > 1 ? `/page/${page}` : ''}`)}
       </body>
     </html>
@@ -583,17 +590,16 @@ app.get('/page/:page', async (req, res) => {
       <body>
         ${getHeader()}
         <div id="content">
+          <div class="album">
           <h3 style="font-size: 16px; margin: 0 0 8px 0; background: #ba412c; color: #ffffff; display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; border-radius: 4px;">
             <span>Latest Uploaded Tracks</span>
             <span style="background: #ffffff; color: #ba412c; font-size: 12px; padding: 2px 6px; border-radius: 3px; display: inline-block;">
               <i class="fa fa-calendar" aria-hidden="true"></i> ${getFormattedDate('d-m-Y')}
             </span>
-          </h3>
-          <div id="content">
-          <div class="album">
+          </h3>    
           ${postList}
           ${pagination}
-        </div></div></div>
+        </div></div>
         ${getFooter(`https://wallkpop.vercel.app/page/${page}`)}
       </body>
     </html>
@@ -982,10 +988,10 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
             size128: track.size128?.trim() || '',
             size192: track.size192?.trim() || '',
             size320: track.size320?.trim() || '',
-            bitrate: track.bitrate?.trim() || '192',
-            bitrate128: track.bitrate128?.trim() || '128',
-            bitrate192: track.bitrate192?.trim() || '192',
-            bitrate320: track.bitrate320?.trim() || '320',
+            bitrate: track.bitrate?.trim() || '',
+            bitrate128: track.bitrate128?.trim() || '',
+            bitrate192: track.bitrate192?.trim() || '',
+            bitrate320: track.bitrate320?.trim() || '',
             thumb: track.thumb?.trim() || '',
             link: track.link?.trim() || '',
             link2: track.link2?.trim() || '',
@@ -1130,10 +1136,10 @@ async function processTrack(trackData) {
   }
 
   const finalTrackData = {
-    id: String(newId), // Ensure id is a string
+    id: String(newId),
     artist: trackData.artist,
     title: trackData.title,
-    year: String(yearNum), // Ensure year is a string
+    year: String(yearNum),
     album: trackData.album || '',
     genre: trackData.genre || '',
     category: trackData.category || '',
@@ -1142,10 +1148,10 @@ async function processTrack(trackData) {
     size128: trackData.size128 || '',
     size192: trackData.size192 || '',
     size320: trackData.size320 || '',
-    bitrate: trackData.bitrate || '192',
-    bitrate128: trackData.bitrate128 || '128',
-    bitrate192: trackData.bitrate192 || '192',
-    bitrate320: trackData.bitrate320 || '320',
+    bitrate: trackData.bitrate || '',
+    bitrate128: trackData.bitrate128 || '',
+    bitrate192: trackData.bitrate192 || '',
+    bitrate320: trackData.bitrate320 || '',
     thumb: trackData.thumb || '',
     link: trackData.link || '',
     link2: trackData.link2 || '',
@@ -1245,7 +1251,7 @@ app.get('/track/:id/:permalink', async (req, res) => {
             </table>
           </div>
           <div class="container">
-            <h2><center>â†“â†“ Download MP3 ~%var-bitrate% kb/s â†“â†“</center></h2>
+            <h2><center>↓↓ Download MP3 ~%var-bitrate% kb/s ↓↓</center></h2>
           </div>
           <audio id="player" controls>
             <source src="%var-link2%" type="audio/mp3">
@@ -1267,19 +1273,19 @@ app.get('/track/:id/:permalink', async (req, res) => {
                 <span itemprop="name">Home</span>
               </a>
               <meta itemprop="position" content="1">
-            </span> Â» 
+            </span> » 
             <span itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
               <a itemtype="https://schema.org/Thing" itemprop="item" href="/search?q=%var-category%">
                 <span itemprop="name">%var-category%</span>
               </a>
               <meta itemprop="position" content="2">
-            </span> Â» 
+            </span> » 
             <span itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
               <a itemtype="https://schema.org/Thing" itemprop="item" href="/search?q=%var-artist%">
                 <span itemprop="name">%var-artist%</span>
               </a>
               <meta itemprop="position" content="3">
-            </span> Â» 
+            </span> » 
             <span itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
               <span itemprop="name">%var-title%</span>
               <meta itemprop="position" content="4">
