@@ -595,7 +595,22 @@ app.get('/panel', async (req, res) => {
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>Upload Track | Wallkpop</title>
         <style>
-          body { font-family: 'Lora', Arial, sans-serif; margin: 20px; }
+          body { font-family: 'Lora', Arial, sans-serif; margin: 0; padding: 0; }
+          header { text-align: center; padding: 20px; background: #f4f4f4; }
+          header h1 a { color: #333; text-decoration: none; }
+          header h2 { color: #666; font-size: 1.2rem; }
+          nav ul { list-style: none; padding: 0; display: flex; justify-content: center; gap: 20px; }
+          nav ul li a { color: #007bff; text-decoration: none; }
+          #search { margin: 20px auto; max-width: 600px; }
+          #search form { display: flex; gap: 10px; }
+          .inp-text { padding: 8px; width: 80%; border: 1px solid #ddd; border-radius: 4px; }
+          .inp-btn { padding: 8px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+          .inp-btn:hover { background: #0056b3; }
+          footer { text-align: center; padding: 20px; background: #f4f4f4; margin-top: 20px; }
+          .footer .center { margin: 10px 0; }
+          .kiri, .kanan { display: inline-block; margin: 0 10px; }
+          .album-list table { width: 100%; border-collapse: collapse; }
+          .album-list td { padding: 5px; vertical-align: top; }
           .form-container { max-width: 800px; margin: 0 auto; }
           .form-group { margin-bottom: 15px; }
           .form-group label { display: block; margin-bottom: 5px; }
@@ -1270,4 +1285,6 @@ app.get('/search', async (req, res) => {
     res.send(html);
   } catch (error) {
     console.error('Search error:', error);
-    res.status(500).send('
+    res.status(500).send('Error performing search');
+  }
+});
