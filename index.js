@@ -589,10 +589,11 @@ app.get('/page/:page', async (req, res) => {
               <i class="fa fa-calendar" aria-hidden="true"></i> ${getFormattedDate('d-m-Y')}
             </span>
           </h3>
+          <div id="content">
           <div class="album">
           ${postList}
           ${pagination}
-        </div></div>
+        </div></div></div>
         ${getFooter(`https://wallkpop.vercel.app/page/${page}`)}
       </body>
     </html>
@@ -1129,10 +1130,10 @@ async function processTrack(trackData) {
   }
 
   const finalTrackData = {
-    id: newId,
+    id: String(newId), // Ensure id is a string
     artist: trackData.artist,
     title: trackData.title,
-    year: yearNum,
+    year: String(yearNum), // Ensure year is a string
     album: trackData.album || '',
     genre: trackData.genre || '',
     category: trackData.category || '',
@@ -1244,7 +1245,7 @@ app.get('/track/:id/:permalink', async (req, res) => {
             </table>
           </div>
           <div class="container">
-            <h2><center>↓↓ Download MP3 ~%var-bitrate% kb/s ↓↓</center></h2>
+            <h2><center>â†“â†“ Download MP3 ~%var-bitrate% kb/s â†“â†“</center></h2>
           </div>
           <audio id="player" controls>
             <source src="%var-link2%" type="audio/mp3">
@@ -1266,19 +1267,19 @@ app.get('/track/:id/:permalink', async (req, res) => {
                 <span itemprop="name">Home</span>
               </a>
               <meta itemprop="position" content="1">
-            </span> » 
+            </span> Â» 
             <span itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
               <a itemtype="https://schema.org/Thing" itemprop="item" href="/search?q=%var-category%">
                 <span itemprop="name">%var-category%</span>
               </a>
               <meta itemprop="position" content="2">
-            </span> » 
+            </span> Â» 
             <span itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
               <a itemtype="https://schema.org/Thing" itemprop="item" href="/search?q=%var-artist%">
                 <span itemprop="name">%var-artist%</span>
               </a>
               <meta itemprop="position" content="3">
-            </span> » 
+            </span> Â» 
             <span itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
               <span itemprop="name">%var-title%</span>
               <meta itemprop="position" content="4">
