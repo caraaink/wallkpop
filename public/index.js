@@ -12,17 +12,15 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static('public'));
 
-// GitHub API setup
 const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 const repoOwner = 'wallkpop';
 const repoName = 'database';
 const branch = 'main';
 const GOOGLE_DRIVE_API_KEY = 'AIzaSyD00uLzmHdXXCQzlA2ibiYg2bzdbl89JOM';
 
-// Configure multer for file uploads
 const upload = multer({
   dest: '/tmp/uploads/',
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     if (file.mimetype === 'application/json') {
       cb(null, true);
@@ -32,7 +30,6 @@ const upload = multer({
   }
 });
 
-// Helper function to get file from GitHub
 async function getGitHubFile(path) {
   try {
     const cacheKey = `github:${path}`;
@@ -71,7 +68,6 @@ async function getGitHubFile(path) {
   }
 }
 
-// Helper function to update file on GitHub
 async function updateGitHubFile(path, content, message, sha = null) {
   try {
     const response = await octokit.request('PUT /repos/{owner}/{repo}/contents/{path}', {
@@ -94,7 +90,6 @@ async function updateGitHubFile(path, content, message, sha = null) {
   }
 }
 
-// Helper function to get all track files from GitHub
 async function getAllTrackFiles() {
   try {
     const cacheKey = 'github:track_files';
@@ -139,7 +134,6 @@ async function getAllTrackFiles() {
   }
 }
 
-// Helper function to get latest ID from track files
 async function getLatestId() {
   try {
     const files = await getAllTrackFiles();
@@ -153,13 +147,11 @@ async function getLatestId() {
   }
 }
 
-// Helper function to generate permalink
 const generatePermalink = (artist, title) => {
   if (!artist || !title) return 'default-permalink';
   return slugify(`${artist}-${title}`, { lower: true, strict: true, remove: /[*+*~.()'"!:@]/g });
 };
 
-// Helper function to get current date/time
 const getFormattedDate = (format) => {
   const date = new Date();
   const pad = (n) => n.toString().padStart(2, '0');
@@ -171,7 +163,6 @@ const getFormattedDate = (format) => {
   return formats[format] || date.toISOString().split('T')[0];
 };
 
-// Meta header template
 const getMetaHeader = (post = null, pageUrl = 'https://wallkpop.vercel.app/') => {
   const isTrackPage = post !== null;
   const title = isTrackPage ? `Download ${post.title} MP3 by ${post.artist} | Free Kpop Music` : 'Wallkpop | Download Latest K-Pop Music MP3';
@@ -243,7 +234,6 @@ const getMetaHeader = (post = null, pageUrl = 'https://wallkpop.vercel.app/') =>
   `;
 };
 
-// Header template
 const getHeader = (searchQuery = '') => `
   <div>
     <header>
@@ -267,7 +257,6 @@ const getHeader = (searchQuery = '') => `
   </div>
 `;
 
-// Footer template
 const getFooter = (pageUrl) => `
   <footer>
     <div class="footer">
@@ -296,7 +285,6 @@ const getFooter = (pageUrl) => `
   </footer>
 `;
 
-// Parse [blog] tags with Google Drive link transformation and conditional HTML rendering
 const parseBlogTags = (template, posts, options = {}) => {
   const { limit = 10, noMessage = '<center>No File</center>', to = ':url-1(:to-file:):' } = options;
   if (!posts || posts.length === 0) return noMessage;
@@ -306,7 +294,6 @@ const parseBlogTags = (template, posts, options = {}) => {
     let item = template;
     const permalink = generatePermalink(post.artist, post.title);
 
-    // Transform Google Drive link for %var-link2%
     let link2 = post.link2 || '#';
     const driveRegex = /https:\/\/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)\/view/;
     const match = link2.match(driveRegex);
@@ -314,10 +301,8 @@ const parseBlogTags = (template, posts, options = {}) => {
       link2 = `https://www.googleapis.com/drive/v3/files/${match[1]}?alt=media&key=${GOOGLE_DRIVE_API_KEY}`;
     }
 
-    // Helper function to conditionally render HTML
     const renderIfNotEmpty = (value, htmlTemplate) => value ? htmlTemplate.replace('%value%', value) : '';
 
-    // Escape lyrics and lyricstimestamp to prevent JS injection
     const escapeForJS = (str) => {
       if (!str) return '';
       return str.replace(/\\/g, '\\\\')
@@ -360,7 +345,6 @@ const parseBlogTags = (template, posts, options = {}) => {
       .replace(/:page_url:/g, `https://wallkpop.vercel.app/track/${post.id}/${permalink}`)
       .replace(/:permalink:/g, permalink);
 
-    // Conditionally render HTML elements
     item = item.replace(/<tr><td width="30%">Album<\/td><td>:<\/td><td>%var-album%<\/td><\/tr>/g, 
       renderIfNotEmpty(post.album, '<tr><td width="30%">Album</td><td>:</td><td>%value%</td></tr>'))
       .replace(/<tr><td>Genre<\/td><td>:<\/td><td>%var-genre%<\/td><\/tr>/g, 
@@ -375,7 +359,6 @@ const parseBlogTags = (template, posts, options = {}) => {
   return result;
 };
 
-// Root route to list all posts, sorted by newest first
 app.get('/', async (req, res) => {
   try {
     const files = await getAllTrackFiles();
@@ -390,7 +373,6 @@ app.get('/', async (req, res) => {
       }
     }
 
-    // Sort posts by created_at in descending order (newest first)
     posts.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
     const postList = parseBlogTags(`
@@ -461,7 +443,6 @@ app.get('/', async (req, res) => {
   }
 });
 
-// Panel route
 app.get('/panel', async (req, res) => {
   try {
     const files = await getAllTrackFiles();
@@ -476,7 +457,6 @@ app.get('/panel', async (req, res) => {
       }
     }
 
-    // Sort posts by created_at in descending order
     posts.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
     const trackList = parseBlogTags(`
@@ -714,16 +694,13 @@ app.get('/panel', async (req, res) => {
   }
 });
 
-// Handle post submission from panel
 app.post('/panel', upload.single('json-file'), async (req, res) => {
   try {
     let trackData;
     if (req.file) {
-      // Handle JSON file upload
       const fileContent = await fs.readFile(req.file.path, 'utf-8');
       try {
         trackData = JSON.parse(fileContent);
-        // Ensure year and id are numbers, and empty fields are ""
         if (Array.isArray(trackData)) {
           trackData = trackData.map(track => ({
             ...track,
@@ -793,7 +770,6 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
         return res.status(400).send('Invalid JSON file: ' + parseError.message);
       }
     } else {
-      // Handle manual form input
       const {
         'var-id': id,
         'var-file': file,
@@ -825,7 +801,6 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
         'var-hits': hits
       } = req.body;
 
-      // Validate required fields
       if (!artist || !title || !year) {
         return res.status(400).send('Missing required fields: artist, title, or year');
       }
@@ -878,9 +853,7 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
   }
 });
 
-// Helper function to process a single track
 async function processTrack(trackData) {
-  // Validate required fields
   if (!trackData.artist || !trackData.title || trackData.year === 0) {
     throw new Error('Missing or invalid required fields: artist, title, or year');
   }
@@ -889,7 +862,6 @@ async function processTrack(trackData) {
     throw new Error('Invalid year value in JSON');
   }
 
-  // Generate ID and slug
   let newId = trackData.id;
   let filePath = trackData.file;
   let sha = trackData.sha;
@@ -904,13 +876,11 @@ async function processTrack(trackData) {
     const slug = generatePermalink(trackData.artist, trackData.title);
     filePath = `file/${newId}-${slug}.json`;
   } else {
-    // For updates, ensure filePath and sha are provided
     if (!filePath || !sha) {
       throw new Error('Missing file path or SHA for update');
     }
   }
 
-  // Finalize track data
   const finalTrackData = {
     id: newId,
     artist: trackData.artist,
@@ -941,19 +911,16 @@ async function processTrack(trackData) {
     hits: trackData.hits || "0"
   };
 
-  // Save track
   const message = trackData.id
     ? `Update track ${newId}: ${trackData.artist} - ${trackData.title}`
     : `Add track ${newId}: ${trackData.artist} - ${trackData.title}`;
   await updateGitHubFile(filePath, finalTrackData, message, sha);
 
-  // Force refresh track files cache
   await getAllTrackFiles();
 
   return { id: newId, permalink: `/track/${newId}/${generatePermalink(trackData.artist, trackData.title)}` };
 }
 
-// Handle cache reset
 app.post('/panel/reset-cache', async (req, res) => {
   try {
     const files = await getAllTrackFiles();
@@ -968,7 +935,6 @@ app.post('/panel/reset-cache', async (req, res) => {
   }
 });
 
-// Track page
 app.get('/track/:id/:permalink', async (req, res) => {
   try {
     const { id } = req.params;
@@ -981,7 +947,6 @@ app.get('/track/:id/:permalink', async (req, res) => {
 
     const post = await getGitHubFile(trackItem.file);
 
-    // Fetch related posts (same artist)
     const related = (await Promise.all(
       files
         .filter(item => item.id !== parseInt(id))
@@ -1115,7 +1080,6 @@ app.get('/track/:id/:permalink', async (req, res) => {
   }
 });
 
-// Search page
 app.get('/search', async (req, res) => {
   try {
     const query = req.query.q ? req.query.q.toLowerCase() : '';
@@ -1137,7 +1101,6 @@ app.get('/search', async (req, res) => {
         continue;
       }
     }
-    // Sort search results by created_at in descending order
     posts.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
     const filteredPosts = posts.slice(0, 40);
 
@@ -1196,7 +1159,6 @@ app.get('/search', async (req, res) => {
   }
 });
 
-// API for posting
 app.post('/api/post', async (req, res) => {
   try {
     const {
@@ -1205,7 +1167,6 @@ app.post('/api/post', async (req, res) => {
       lyricstimestamp, lyrics, name, hits
     } = req.body;
 
-    // Validate required fields
     if (!artist || !title || !year) {
       return res.status(400).json({ error: 'Missing required fields: artist, title, or year' });
     }
@@ -1214,7 +1175,6 @@ app.post('/api/post', async (req, res) => {
       return res.status(400).json({ error: 'Invalid year value' });
     }
 
-    // Generate ID and slug
     const latestId = await getLatestId();
     const newId = latestId + 1;
     const existingFiles = await getAllTrackFiles();
@@ -1225,7 +1185,6 @@ app.post('/api/post', async (req, res) => {
     const slug = generatePermalink(artist, title);
     const filePath = `file/${newId}-${slug}.json`;
 
-    // Create track data
     const trackData = {
       id: newId,
       artist,
@@ -1256,10 +1215,8 @@ app.post('/api/post', async (req, res) => {
       hits: hits || "0"
     };
 
-    // Save track
     await updateGitHubFile(filePath, trackData, `Add track ${newId}: ${artist} - ${title}`);
 
-    // Force refresh track files cache
     await getAllTrackFiles();
 
     res.json({ id: newId, permalink: `/track/${newId}/${slug}` });
