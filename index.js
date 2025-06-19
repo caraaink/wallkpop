@@ -69,25 +69,33 @@ async function getGitHubFile(path) {
   }
 }
 
-async function updateGitHubFile(path, content, message, sha = null) {
-  try {
-    const response = await octokit.request('PUT /repos/{owner}/{repo}/contents/{path}', {
-      owner: repoOwner,
-      repo: repoName,
-      path,
-      message,
-      content: Buffer.from(JSON.stringify(content, null, 2)).toString('base64'),
-      branch,
-      sha: sha || undefined
-    });
+async function updateGitHubFile(path, content, message, sha = null, retries = 2) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const response = await octokit.request('PUT /repos/{owner}/{repo}/contents/{path}', {
+        owner: repoOwner,
+        repo: repoName,
+        path,
+        message,
+        content: Buffer.from(JSON.stringify(content, null, 2)).toString('base64'),
+        branch,
+        sha: sha || undefined
+      });
 
-    const cacheKey = `github:${path}`;
-    await kv.set(cacheKey, content, { ex: 3600 });
-    await kv.del('github:track_files');
-    return response.data.commit.sha;
-  } catch (error) {
-    console.error(`Error updating GitHub file ${path}:`, error.response?.data || error.message);
-    throw error;
+      const cacheKey = `github:${path}`;
+      await kv.set(cacheKey, content, { ex: 3600 });
+      await kv.del('github:track_files');
+      return response.data.commit.sha;
+    } catch (error) {
+      if (attempt < retries && (error.status === 429 || error.message.includes('rate limit'))) {
+        const delay = Math.pow(2, attempt) * 1000;
+        console.warn(`Rate limit hit, retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      console.error(`Error updating GitHub file ${path}:`, error.response?.data || error.message);
+      throw error;
+    }
   }
 }
 
@@ -159,9 +167,14 @@ async function getAllTrackFiles(page = null, perPage = null) {
 
 async function getLatestId() {
   try {
+    const cacheKey = 'latest_id';
+    const cached = await kv.get(cacheKey);
+    if (cached) return cached;
+
     const files = await getAllTrackFiles();
-    if (!files || files.length === 0) return 10;
-    return Math.max(...files.map(item => item.id));
+    const latestId = files.length === 0 ? 10 : Math.max(...files.map(item => item.id));
+    await kv.set(cacheKey, latestId, { ex: 3600 });
+    return latestId;
   } catch (error) {
     console.error('Error getting latest ID:', error.message);
     return 10;
@@ -254,11 +267,11 @@ const getMetaHeader = (post = null, pageUrl = 'https://wallkpop.vercel.app/', qu
     <meta name="keywords" content="${keywords}">
     <meta name="author" content="Wallkpop">
     <meta name="robots" content="index, follow">
-    <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico">
+    <link rel="shortcut icon" type="image/x-icon" href="https://cdn.jsdelivr.net/gh/caraaink/meownime@main/wallkpop/favicon.ico">
     <link rel="canonical" href="${pageUrl}">
-    <link rel="stylesheet" type="text/css" href="/style.css"/>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/caraaink/otakudesu@1ff200e0bc05d43443b4944b46532c4b4c3cc275/plyr.css" />
-    <script src="https://cdn.jsdelivr.net/gh/caraaink/otakudesu@1ff200e0bc05d43443b4944b46532c4b4c3cc275/plyr.polyfilled.js"></script>
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/gh/caraaink/meownime@main/wallkpop/style.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/caraaink/meownime@main/wallkpop/plyr.css" />
+    <script src="https://cdn.jsdelivr.net/gh/caraaink/meownime@main/wallkpop/plyr.polyfilled.js"></script>
     <link href="https://stackpath.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet" integrity="sha384-wvfXpqpZZVQGK6TAh5PVlGOfQNHSoD2xbE+QkPxCAFlNEevoEH3Sl0sibVcOQVnN" crossorigin="anonymous">
     <link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;700&display=swap" rel="stylesheet">
     <meta name="google-site-verification" content="9e9RaAsVDPAkag708Q30S8xSw8_qIMm87FJBoJWzink" />
@@ -403,7 +416,7 @@ const parseBlogTags = (template, posts, options = {}) => {
       <button class="downd bitrate-128"><span class="low-label">LQ</span><div class="title">Download Now</div><div class="size">(${post.size128 || ''})</div><span class="bitrate">${post.bitrate128 || '128'} kb/s</span></button>
     </a>` : '';
 
-    let downloadButtons = link320 || link192 || link128
+    const downloadButtons = link320 || link192 || link128
       ? `<div class="download-buttons">${link320}${link192}${link128}</div>`
       : `<div class="download-buttons">${linkOriginal}</div>`;
 
@@ -969,11 +982,12 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
       }];
     }
 
-    const results = [];
-    for (const track of trackData) {
-      const result = await processTrack(track);
-      results.push(result);
-    }
+    const existingFiles = await getAllTrackFiles();
+    const latestId = await getLatestId();
+    const results = await Promise.all(trackData.map((track, index) => 
+      processTrack(track, existingFiles, latestId + index)
+    ));
+
     res.redirect(results[0].permalink);
   } catch (error) {
     console.error('Error uploading track:', error);
@@ -981,15 +995,18 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
   }
 });
 
-async function processTrack(trackData) {
-  if (!trackData.artist || !trackData.title || trackData.year === 0) throw new Error('Missing or invalid required fields: artist, title, or year');
+async function processTrack(trackData, existingFiles, newId) {
+  if (!trackData.artist || !trackData.title || trackData.year === 0) {
+    throw new Error('Missing or invalid required fields: artist, title, or year');
+  }
   const yearNum = parseInt(trackData.year, 10);
-  if (isNaN(yearNum) || yearNum === 0) throw new Error('Invalid year value in JSON');
+  if (isNaN(yearNum) || yearNum === 0) {
+    throw new Error('Invalid year value in JSON');
+  }
 
-  const latestId = await getLatestId();
-  const newId = latestId + 1;
-  const existingFiles = await getAllTrackFiles();
-  if (existingFiles.some(file => file.id === newId)) throw new Error(`ID ${newId} already exists`);
+  if (existingFiles.some(file => file.id === newId)) {
+    throw new Error(`ID ${newId} already exists`);
+  }
 
   const slug = generatePermalink(trackData.artist, trackData.title);
   const filePath = `file/${newId}-${slug}.json`;
@@ -1027,18 +1044,15 @@ async function processTrack(trackData) {
   const message = `Add track ${newId}: ${trackData.artist} - ${trackData.title}`;
   await updateGitHubFile(filePath, finalTrackData, message);
 
-  await getAllTrackFiles();
-
   return { id: newId, permalink: `/track/${newId}/${generatePermalink(trackData.artist, trackData.title)}` };
 }
 
 app.post('/panel/reset-cache', async (req, res) => {
   try {
     const files = await getAllTrackFiles();
-    for (const file of files) {
-      await kv.del(`github:${file.file}`);
-    }
+    await Promise.all(files.map(file => kv.del(`github:${file.file}`)));
     await kv.del('github:track_files');
+    await kv.del('latest_id');
     res.json({ message: 'Cache cleared successfully' });
   } catch (error) {
     console.error('Error resetting cache:', error.message);
@@ -1108,7 +1122,7 @@ app.get('/track/:id/:permalink', async (req, res) => {
           </div>
           <div id="debug" class="debug">Loading...</div>
           <script>const lyricsText = "%var-lyricstimestamp%";</script>
-          <script src="https://cdn.jsdelivr.net/gh/caraaink/meownime@refs/heads/main/javascript/audio-lyrics-timestamp.js"></script>
+          <script src="https://cdn.jsdelivr.net/gh/caraaink/meownime@main/wallkpop/audio-lyrics-timestamp.js"></script>
           <div style="text-align: center;"><br>
             %download-buttons%
           </div>
