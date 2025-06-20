@@ -1,21 +1,23 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const slugify = require('slugify');
-const { Octokit } = require('@octokit/core');
 const { kv } = require('@vercel/kv');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs').promises;
+const { createClient } = require('webdav');
 
 const app = express();
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
-const repoOwner = 'wallkpop';
-const repoName = 'database';
-const branch = 'main';
+// Konfigurasi WebDAV untuk Seafile
+const seafile = createClient('https://plus.seafile.com/seafdav/', {
+  username: 'caraaink@gmail.com',
+  password: 'fahmiaink'
+});
+const libraryPath = '/wallkpop'; // Library Seafile bernama 'wallkpop'
 const GOOGLE_DRIVE_API_KEY = 'AIzaSyD00uLzmHdXXCQzlA2ibiYg2bzdbl89JOM';
 const PANEL_PASSWORD = 'eren19';
 
@@ -31,24 +33,13 @@ const upload = multer({
   }
 });
 
-async function getGitHubFile(path) {
+async function getSeafileFile(path) {
   try {
-    const cacheKey = `github:${path}`;
+    const cacheKey = `seafile:${path}`;
     const cached = await kv.get(cacheKey);
     if (cached) return cached;
 
-    const response = await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', {
-      owner: repoOwner,
-      repo: repoName,
-      path,
-      ref: branch
-    });
-
-    if (!response.data.content) {
-      throw new Error(`No content found for ${path}`);
-    }
-
-    const content = Buffer.from(response.data.content, 'base64').toString('utf-8');
+    const content = await seafile.getFileContents(`${libraryPath}/${path}`, { format: 'text' });
     if (!content.trim()) {
       throw new Error(`Empty content for ${path}`);
     }
@@ -64,46 +55,30 @@ async function getGitHubFile(path) {
     await kv.set(cacheKey, data, { ex: 604800 });
     return data;
   } catch (error) {
-    console.error(`Error fetching GitHub file ${path}:`, error.message);
+    console.error(`Error fetching Seafile file ${path}:`, error.message);
     throw error;
   }
 }
 
 async function checkFileExists(path) {
   try {
-    const response = await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', {
-      owner: repoOwner,
-      repo: repoName,
-      path,
-      ref: branch
-    });
-    return response.data.sha;
+    await seafile.getFileContents(`${libraryPath}/${path}`, { format: 'text' });
+    return true;
   } catch (error) {
-    if (error.status === 404) return null;
+    if (error.status === 404) return false;
     throw error;
   }
 }
 
-async function updateGitHubFile(path, content, message, sha = null, retries = 2) {
+async function updateSeafileFile(path, content, message, retries = 2) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      // Verify SHA only if updating an existing file
-      const currentSha = sha || (await checkFileExists(path));
-      const response = await octokit.request('PUT /repos/{owner}/{repo}/contents/{path}', {
-        owner: repoOwner,
-        repo: repoName,
-        path,
-        message,
-        content: Buffer.from(JSON.stringify(content, null, 2)).toString('base64'),
-        branch,
-        sha: currentSha || undefined
-      });
-
-      const cacheKey = `github:${path}`;
+      await seafile.putFileContents(`${libraryPath}/${path}`, JSON.stringify(content, null, 2));
+      const cacheKey = `seafile:${path}`;
       await kv.set(cacheKey, content, { ex: 604800 });
-      await kv.del('github:track_files');
+      await kv.del('seafile:track_files');
       await kv.del('latest_id');
-      return response.data.commit.sha;
+      return;
     } catch (error) {
       if (attempt < retries && (error.status === 429 || error.message.includes('rate limit'))) {
         const delay = Math.pow(2, attempt) * 1000;
@@ -111,7 +86,7 @@ async function updateGitHubFile(path, content, message, sha = null, retries = 2)
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }
-      console.error(`Error updating GitHub file ${path}:`, error.response?.data || error.message);
+      console.error(`Error updating Seafile file ${path}:`, error.message);
       throw error;
     }
   }
@@ -119,52 +94,46 @@ async function updateGitHubFile(path, content, message, sha = null, retries = 2)
 
 async function getAllTrackFiles(page = null, perPage = null) {
   try {
-    const cacheKey = 'github:track_files';
+    const cacheKey = 'seafile:track_files';
     let cached = await kv.get(cacheKey);
     if (cached && !page) return cached;
 
-    const response = await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', {
-      owner: repoOwner,
-      repo: repoName,
-      path: 'file',
-      ref: branch
-    });
-
-    const files = [];
+    const files = await seafile.getDirectoryContents(libraryPath);
+    const trackFiles = [];
     const seenIds = new Set();
-    for (const item of response.data) {
-      if (item.type !== 'file' || !item.name.endsWith('.json')) continue;
-      const id = parseInt(item.name.split('-')[0], 10);
+
+    for (const item of files) {
+      if (item.type !== 'file' || !item.basename.endsWith('.json')) continue;
+      const id = parseInt(item.basename.split('-')[0], 10);
       if (isNaN(id)) {
-        console.warn(`Invalid ID in filename: ${item.name}`);
+        console.warn(`Invalid ID in filename: ${item.basename}`);
         continue;
       }
       if (seenIds.has(id)) {
-        console.warn(`Duplicate ID ${id} found in filename: ${item.name}`);
+        console.warn(`Duplicate ID ${id} found in filename: ${item.basename}`);
         continue;
       }
       seenIds.add(id);
-      files.push({
+      trackFiles.push({
         id,
-        slug: item.name.replace(/^\d+-/, '').replace(/\.json$/, ''),
-        file: item.path,
-        sha: item.sha
+        slug: item.basename.replace(/^\d+-/, '').replace(/\.json$/, ''),
+        file: item.basename
       });
     }
 
-    files.sort((a, b) => b.id - a.id);
+    trackFiles.sort((a, b) => b.id - a.id);
 
-    let result = files;
+    let result = trackFiles;
     if (page && perPage) {
       const startIndex = (page - 1) * perPage;
-      result = files.slice(startIndex, startIndex + perPage);
+      result = trackFiles.slice(startIndex, startIndex + perPage);
     }
 
     const fullData = [];
     for (const file of result) {
       try {
-        const track = await getGitHubFile(file.file);
-        fullData.push({ ...track, id: file.id, file: file.file, sha: file.sha });
+        const track = await getSeafileFile(file.file);
+        fullData.push({ ...track, id: file.id, file: file.file });
       } catch (error) {
         console.error(`Skipping file ${file.file} due to error: ${error.message}`);
         continue;
@@ -177,7 +146,7 @@ async function getAllTrackFiles(page = null, perPage = null) {
 
     return fullData;
   } catch (error) {
-    console.error('Error fetching track files:', error.response?.data || error.message);
+    console.error('Error fetching track files:', error.message);
     if (error.status === 404) return [];
     throw error;
   }
@@ -331,7 +300,7 @@ const getFooter = (pageUrl) => `
       </div>
       <div class="center">
         <a href="https://www.facebook.com/wallkpop_official" title="Follow Facebook" style="background:#1877F2;color:#fff;padding:3px 8px;margin:1px;border:1px solid #ddd;font-weight:bold;border-radius:4px;display:inline-block;" target="_blank">Facebook</a>
-        <a href="https://www.instagram.com/wallkpop.official" title="Follow Instagram" style="background:linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888);color:#ffffff;padding:3px 8px;margin:1px;font-weight:bold;border:1px solid #ddd;border-radius:4px;display:inline-block;" target="_blank">Instagram</a>
+        <a href="https://www.instagram.com/wallkpop.official" title="Follow Instagram" style="background:linear-gradient(45deg, #f09433, #e6683c, #HASE#dc2743, #cc2366, #bc1888);color:#ffffff;padding:3px 8px;margin:1px;font-weight:bold;border:1px solid #ddd;border-radius:4px;display:inline-block;" target="_blank">Instagram</a>
         <a href="https://x.com/wallkpop_mp3" title="Follow X" style="background:#000000;color:#ffffff;padding:3px 8px;margin:1px;font-weight:bold;border:1px solid #ddd;border-radius:4px;display:inline-block;" target="_blank">X</a>
         <a href="whatsapp://send?text=Wallkpop | Download Latest K-Pop Music MP3%0a%20${pageUrl}" title="Bagikan ke WhatsApp" style="background:#019C00;color:#ffffff;padding:3px 8px;margin:1px;font-weight:bold;border:1px solid #ddd;border-radius:4px;display:inline-block;">WA</a>
         <a href="https://t.me/wallkpopmp3" title="Join Telegram" style="background:#0088CC;color:#ffffff;padding:3px 8px;margin:1px;font-weight:bold;border:1px solid #ddd;border-radius:4px;display:inline-block;" target="_blank">Telegram</a>
@@ -469,8 +438,8 @@ const parseBlogTags = (template, posts, options = {}) => {
       .replace(/%sn%/g, index + 1)
       .replace(/%date=Y-m-d%/g, getFormattedDate('Y-m-d'))
       .replace(/%text%/g, post.year || '')
-      .replace(/:url-1\(:to-file:\):/g, `/track/${post.id}/${permalink}`)
-      .replace(/:page_url:/g, `https://wallkpop.vercel.app/track/${post.id}/${permalink}`)
+      .replace(/:url-1\(:to-file:\):/g, `/track/%id%/:permalink:`)
+      .replace(/:page_url:/g, `https://wallkpop.vercel.app/track/%id%/:permalink:`)
       .replace(/:permalink:/g, permalink)
       .replace(/%var-link_original%/g, linkOriginal)
       .replace(/%var-link320%/g, link320)
@@ -1012,12 +981,12 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
     if (conflicts.length > 0) {
       // Retry with fresh data
       await kv.del('latest_id');
-      await kv.del('github:track_files');
+      await kv.del('seafile:track_files');
       latestId = await getLatestId(true);
       const newIdAssignments = trackData.map((_, index) => latestId + index + 1);
       const newConflicts = newIdAssignments.filter(id => existingFiles.some(file => file.id === id));
       if (newConflicts.length > 0) {
-        throw new Error(`ID conflicts detected: ${newConflicts.join(', ')}. Clear cache or check repository.`);
+        throw new Error(`ID conflicts detected: ${newConflicts.join(', ')}. Clear cache or check library.`);
       }
       idAssignments.splice(0, idAssignments.length, ...newIdAssignments);
     }
@@ -1025,7 +994,7 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
     const results = [];
     const errors = [];
 
-    // Process tracks sequentially to avoid GitHub API conflicts
+    // Process tracks sequentially to avoid conflicts
     for (let index = 0; index < trackData.length; index++) {
       try {
         const result = await processTrack(trackData[index], existingFiles, idAssignments[index]);
@@ -1034,8 +1003,7 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
         existingFiles.push({
           id: idAssignments[index],
           slug: generatePermalink(trackData[index].artist, trackData[index].title),
-          file: `file/${idAssignments[index]}-${generatePermalink(trackData[index].artist, trackData[index].title)}.json`,
-          sha: null
+          file: `${idAssignments[index]}-${generatePermalink(trackData[index].artist, trackData[index].title)}.json`
         });
       } catch (error) {
         errors.push({
@@ -1051,7 +1019,7 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
     }
 
     // Invalidate caches after successful uploads
-    await kv.del('github:track_files');
+    await kv.del('seafile:track_files');
     await kv.del('latest_id');
 
     res.redirect(results[0].permalink);
@@ -1075,7 +1043,7 @@ async function processTrack(trackData, existingFiles, newId) {
   }
 
   const slug = generatePermalink(trackData.artist, trackData.title);
-  const filePath = `file/${newId}-${slug}.json`;
+  const filePath = `${newId}-${slug}.json`;
 
   const finalTrackData = {
     id: String(newId),
@@ -1108,7 +1076,7 @@ async function processTrack(trackData, existingFiles, newId) {
   };
 
   const message = `Add track ${newId}: ${trackData.artist} - ${trackData.title}`;
-  await updateGitHubFile(filePath, finalTrackData, message);
+  await updateSeafileFile(filePath, finalTrackData, message);
 
   return { id: newId, permalink: `/track/${newId}/${generatePermalink(trackData.artist, trackData.title)}` };
 }
@@ -1116,8 +1084,8 @@ async function processTrack(trackData, existingFiles, newId) {
 app.post('/panel/reset-cache', async (req, res) => {
   try {
     const files = await getAllTrackFiles();
-    await Promise.all(files.map(file => kv.del(`github:${file.file}`)));
-    await kv.del('github:track_files');
+    await Promise.all(files.map(file => kv.del(`seafile:${file.file}`)));
+    await kv.del('seafile:track_files');
     await kv.del('latest_id');
     res.json({ message: 'Cache cleared successfully' });
   } catch (error) {
@@ -1136,7 +1104,7 @@ app.get('/track/:id/:permalink', async (req, res) => {
       return res.status(404).send('Post not found');
     }
 
-    const post = await getGitHubFile(trackItem.file);
+    const post = await getSeafileFile(trackItem.file);
 
     const related = files
       .filter(item => item.id !== parseInt(id) && item.artist === post.artist)
@@ -1177,7 +1145,7 @@ app.get('/track/:id/:permalink', async (req, res) => {
             </table>
           </div>
           <div class="container">
-            <h2><center>↓↓ Download MP3 ~%var-bitrate% kb/s ↓↓</center></h2>
+            <h2><center>â†“â†“ Download MP3 ~%var-bitrate% kb/s â†“â†“</center></h2>
           </div>
           <audio id="player" controls>
             <source src="%var-link2%" type="audio/mp3">
@@ -1199,19 +1167,19 @@ app.get('/track/:id/:permalink', async (req, res) => {
                 <span itemprop="name">Home</span>
               </a>
               <meta itemprop="position" content="1">
-            </span> » 
+            </span> Â» 
             <span itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
               <a itemtype="https://schema.org/Thing" itemprop="item" href="/search?q=%var-category%">
                 <span itemprop="name">%var-category%</span>
               </a>
               <meta itemprop="position" content="2">
-            </span> » 
+            </span> Â» 
             <span itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
               <a itemtype="https://schema.org/Thing" itemprop="item" href="/search?q=%var-artist%">
                 <span itemprop="name">%var-artist%</span>
               </a>
               <meta itemprop="position" content="3">
-            </span> » 
+            </span> Â» 
             <span itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
               <span itemprop="name">%var-title%</span>
               <meta itemprop="position" content="4">
