@@ -61,7 +61,7 @@ async function getGitHubFile(path) {
       throw new Error(`Invalid JSON in ${path}: ${parseError.message}`);
     }
 
-    await kv.set(cacheKey, data, { ex: 3600 });
+    await kv.set(cacheKey, data, { ex:  });
     return data;
   } catch (error) {
     console.error(`Error fetching GitHub file ${path}:`, error.message);
@@ -100,7 +100,7 @@ async function updateGitHubFile(path, content, message, sha = null, retries = 2)
       });
 
       const cacheKey = `github:${path}`;
-      await kv.set(cacheKey, content, { ex: 3600 });
+      await kv.set(cacheKey, content, { ex: 2160000 });
       await kv.del('github:track_files');
       await kv.del('latest_id');
       return response.data.commit.sha;
@@ -172,7 +172,7 @@ async function getAllTrackFiles(page = null, perPage = null) {
     }
 
     if (!page) {
-      await kv.set(cacheKey, fullData, { ex: 3600 });
+      await kv.set(cacheKey, fullData, { ex: 2160000 });
     }
 
     return fullData;
@@ -193,7 +193,7 @@ async function getLatestId(force = false) {
 
     const files = await getAllTrackFiles();
     const latestId = files.length === 0 ? 10 : Math.max(...files.map(item => item.id));
-    await kv.set(cacheKey, latestId, { ex: 3600 });
+    await kv.set(cacheKey, latestId, { ex: 2160000 });
     return latestId;
   } catch (error) {
     console.error('Error getting latest ID:', error.message);
@@ -565,7 +565,7 @@ app.get(['/', '/page/:page'], async (req, res) => {
       </body>
     </html>`;
 
-    await kv.set(cacheKey, html, { ex: 3600 });
+    await kv.set(cacheKey, html, { ex: 2160000 });
     res.send(html);
   } catch (error) {
     console.error('Error fetching posts:', error);
@@ -1298,7 +1298,7 @@ app.get('/search', async (req, res) => {
       </body>
     </html>`;
 
-    await kv.set(cacheKey, html, { ex: 3600 });
+    await kv.set(cacheKey, html, { ex: 2160000 });
     res.send(html);
   } catch (error) {
     console.error('Search error:', error);
