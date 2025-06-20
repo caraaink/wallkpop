@@ -12,19 +12,10 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-const supabase = createClient(
-  process.env.S3_ENDPOINT,
-  process.env.S3_SECRET_ACCESS_KEY,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-      detectSessionInUrl: false
-    }
-  }
-);
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://bkoouiocqfoubimtrode.supabase.co';
+const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJrb291aW9jcWZvdWJpbXRyb2RlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAzOTMyMzgsImV4cCI6MjA2NTk2OTIzOH0.o4T65bB3vbtVXOydTvBO_tK4dm5uMvoLvLFEW4ER5gk';
+const supabase = createClient(supabaseUrl, supabaseKey);
 
-const S3_BUCKET = process.env.S3_BUCKET || 'tracks';
 const GOOGLE_DRIVE_API_KEY = 'AIzaSyD00uLzmHdXXCQzlA2ibiYg2bzdbl89JOM';
 const PANEL_PASSWORD = 'eren19';
 
@@ -40,82 +31,77 @@ const upload = multer({
   }
 });
 
-async function getSupabaseFile(path) {
+async function getSupabaseFile(id, slug) {
   try {
-    const cacheKey = `supabase:${path}`;
+    const cacheKey = `supabase:${id}-${slug}`;
     const cached = await kv.get(cacheKey);
     if (cached) return cached;
 
     const { data, error } = await supabase.storage
-      .from(S3_BUCKET)
-      .download(path);
-
+      .from('tracks')
+      .download(`${id}-${slug}.json`);
+    
     if (error) {
-      throw new Error(`Error downloading ${path}: ${error.message}`);
+      throw new Error(`Error fetching file ${id}-${slug}: ${error.message}`);
     }
 
     const content = await data.text();
-    if (!content.trim()) {
-      throw new Error(`Empty content for ${path}`);
-    }
-
-    let parsedData;
+    let trackData;
     try {
-      parsedData = JSON.parse(content);
+      trackData = JSON.parse(content);
     } catch (parseError) {
-      console.error(`Invalid JSON in ${path}: ${content.slice(0, 100)}...`);
-      throw new Error(`Invalid JSON in ${path}: ${parseError.message}`);
+      console.error(`Invalid JSON in ${id}-${slug}: ${content.slice(0, 100)}...`);
+      throw new Error(`Invalid JSON: ${parseError.message}`);
     }
 
-    await kv.set(cacheKey, parsedData, { ex: 604800 });
-    return parsedData;
+    await kv.set(cacheKey, trackData, { ex: 604800 });
+    return trackData;
   } catch (error) {
-    console.error(`Error fetching Supabase file ${path}:`, error.message);
+    console.error(`Error fetching Supabase file ${id}-${slug}:`, error.message);
     throw error;
   }
 }
 
-async function checkFileExists(path) {
+async function checkFileExists(id, slug) {
   try {
     const { data, error } = await supabase.storage
-      .from(S3_BUCKET)
-      .list('', { limit: 1, search: path });
-
+      .from('tracks')
+      .list('', { search: `${id}-${slug}.json` });
+    
     if (error) throw error;
-    return data.length > 0 ? data[0].id : null;
+    return data.length > 0 ? data[0].name : null;
   } catch (error) {
-    if (error.status === 404) return null;
+    console.error(`Error checking file existence ${id}-${slug}:`, error.message);
     throw error;
   }
 }
 
-async function updateSupabaseFile(path, content, message, retries = 2) {
+async function updateSupabaseFile(id, slug, content, retries = 2) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
+      const filePath = `${id}-${slug}.json`;
       const { error } = await supabase.storage
-        .from(S3_BUCKET)
-        .upload(path, Buffer.from(JSON.stringify(content, null, 2)), {
+        .from('tracks')
+        .upload(filePath, JSON.stringify(content, null, 2), {
           contentType: 'application/json',
           upsert: true
         });
 
-      if (error) {
-        throw new Error(`Error uploading ${path}: ${error.message}`);
-      }
+      if (error) throw error;
 
-      const cacheKey = `supabase:${path}`;
+      const cacheKey = `supabase:${id}-${slug}`;
       await kv.set(cacheKey, content, { ex: 604800 });
       await kv.del('supabase:track_files');
       await kv.del('latest_id');
-      return true;
+      return filePath;
     } catch (error) {
-      if (attempt < retries && (error.status === 429 || error.message.includes('rate limit'))) {
+      if (attempt < retries && error.status === 429) {
         const delay = Math.pow(2, attempt) * 1000;
-        console.warn(`Rate limit hit for ${path}, retrying in ${delay}ms...`);
+        console.warn(`Rate limit hit for ${id}-${slug}, retrying in ${delay}ms...`);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }
-      console.error(`Error updating Supabase file ${path}:`, error.message);
+      console.error(`Error updating Supabase file ${id}-${slug}:`, error.message);
       throw error;
     }
   }
@@ -128,12 +114,10 @@ async function getAllTrackFiles(page = null, perPage = null) {
     if (cached && !page) return cached;
 
     const { data, error } = await supabase.storage
-      .from(S3_BUCKET)
-      .list('file', { limit: 1000 });
+      .from('tracks')
+      .list();
 
-    if (error) {
-      throw new Error(`Error listing files: ${error.message}`);
-    }
+    if (error) throw error;
 
     const files = [];
     const seenIds = new Set();
@@ -152,8 +136,7 @@ async function getAllTrackFiles(page = null, perPage = null) {
       files.push({
         id,
         slug: item.name.replace(/^\d+-/, '').replace(/\.json$/, ''),
-        file: `file/${item.name}`,
-        created_at: item.created_at
+        file: item.name,
       });
     }
 
@@ -168,7 +151,7 @@ async function getAllTrackFiles(page = null, perPage = null) {
     const fullData = [];
     for (const file of result) {
       try {
-        const track = await getSupabaseFile(file.file);
+        const track = await getSupabaseFile(file.id, file.slug);
         fullData.push({ ...track, id: file.id, file: file.file });
       } catch (error) {
         console.error(`Skipping file ${file.file} due to error: ${error.message}`);
@@ -314,7 +297,6 @@ const getHeader = (searchQuery = '') => `
         <ul>
           <li><a href="/">Home</a></li>
           <li><a href="/search?q=Dance">Dance</a></li>
- ministère
           <li><a href="/search?q=Ballad">Ballad</a></li>
           <li><a href="/search?q=Soundtrack">Soundtrack</a></li>
         </ul>
@@ -1008,22 +990,19 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
       }];
     }
 
-    // Force fresh fetch to avoid stale cache
     const existingFiles = await getAllTrackFiles();
     let latestId = await getLatestId(true);
 
-    // Validate all IDs before processing
     const idAssignments = trackData.map((_, index) => latestId + index + 1);
     const conflicts = idAssignments.filter(id => existingFiles.some(file => file.id === id));
     if (conflicts.length > 0) {
-      // Retry with fresh data
       await kv.del('latest_id');
       await kv.del('supabase:track_files');
       latestId = await getLatestId(true);
       const newIdAssignments = trackData.map((_, index) => latestId + index + 1);
       const newConflicts = newIdAssignments.filter(id => existingFiles.some(file => file.id === id));
       if (newConflicts.length > 0) {
-        throw new Error(`ID conflicts detected: ${newConflicts.join(', ')}. Clear cache or check repository.`);
+        throw new Error(`ID conflicts detected: ${newConflicts.join(', ')}. Clear cache or check storage.`);
       }
       idAssignments.splice(0, idAssignments.length, ...newIdAssignments);
     }
@@ -1031,17 +1010,14 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
     const results = [];
     const errors = [];
 
-    // Process tracks sequentially to avoid conflicts
     for (let index = 0; index < trackData.length; index++) {
       try {
         const result = await processTrack(trackData[index], existingFiles, idAssignments[index]);
         results.push(result);
-        // Update existingFiles to reflect new upload
         existingFiles.push({
           id: idAssignments[index],
           slug: generatePermalink(trackData[index].artist, trackData[index].title),
-          file: `file/${idAssignments[index]}-${generatePermalink(trackData[index].artist, trackData[index].title)}.json`,
-          created_at: new Date().toISOString()
+          file: `${idAssignments[index]}-${generatePermalink(trackData[index].artist, trackData[index].title)}.json`
         });
       } catch (error) {
         errors.push({
@@ -1056,7 +1032,6 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
       throw new Error(`No tracks uploaded successfully. Errors: ${errors.map(e => `${e.track}: ${e.error}`).join('; ')}`);
     }
 
-    // Invalidate caches after successful uploads
     await kv.del('supabase:track_files');
     await kv.del('latest_id');
 
@@ -1081,7 +1056,6 @@ async function processTrack(trackData, existingFiles, newId) {
   }
 
   const slug = generatePermalink(trackData.artist, trackData.title);
-  const filePath = `file/${newId}-${slug}.json`;
 
   const finalTrackData = {
     id: String(newId),
@@ -1113,10 +1087,9 @@ async function processTrack(trackData, existingFiles, newId) {
     hits: trackData.hits || '0'
   };
 
-  const message = `Add track ${newId}: ${trackData.artist} - ${trackData.title}`;
-  await updateSupabaseFile(filePath, finalTrackData, message);
+  await updateSupabaseFile(newId, slug, finalTrackData);
 
-  return { id: newId, permalink: `/track/${newId}/${generatePermalink(trackData.artist, trackData.title)}` };
+  return { id: newId, permalink: `/track/${newId}/${slug}` };
 }
 
 app.post('/panel/reset-cache', async (req, res) => {
@@ -1134,15 +1107,15 @@ app.post('/panel/reset-cache', async (req, res) => {
 
 app.get('/track/:id/:permalink', async (req, res) => {
   try {
-    const { id } = req.params;
+    const { id, permalink } = req.params;
     const files = await getAllTrackFiles();
-    const trackItem = files.find(item => item.id === parseInt(id));
+    const trackItem = files.find(item => item.id === parseInt(id) && item.slug === permalink);
     if (!trackItem) {
-      console.error(`Track with ID ${id} not found in files`);
+      console.error(`Track with ID ${id} and permalink ${permalink} not found`);
       return res.status(404).send('Post not found');
     }
 
-    const post = await getSupabaseFile(trackItem.file);
+    const post = await getSupabaseFile(trackItem.id, trackItem.slug);
 
     const related = files
       .filter(item => item.id !== parseInt(id) && item.artist === post.artist)
