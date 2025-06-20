@@ -34,6 +34,7 @@ const upload = multer({
 
 async function getSupabaseFile(id, slug) {
   try {
+    console.log(`Fetching file: ${id}-${slug}`);
     const cacheKey = `supabase:${id}-${slug}`;
     const cached = await kv.get(cacheKey);
     if (cached) return cached;
@@ -43,7 +44,8 @@ async function getSupabaseFile(id, slug) {
       .download(`${id}-${slug}.json`);
     
     if (error) {
-      throw new Error(`Error fetching file ${id}-${slug}: ${error.message}`);
+      console.error(`Error fetching file ${id}-${slug}: ${error.message}`);
+      throw error;
     }
 
     const content = await data.text();
@@ -82,6 +84,7 @@ async function updateSupabaseFile(id, slug, content, retries = 2, isAdmin = fals
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       const filePath = `${id}-${slug}.json`;
+      console.log(`Attempting to upload ${filePath}...`);
       const { error } = await supabaseClient.storage
         .from('tracks')
         .upload(filePath, JSON.stringify(content, null, 2), {
@@ -111,6 +114,7 @@ async function updateSupabaseFile(id, slug, content, retries = 2, isAdmin = fals
 
 async function getAllTrackFiles(page = null, perPage = null) {
   try {
+    console.log('Fetching all track files...');
     const cacheKey = 'supabase:track_files';
     let cached = await kv.get(cacheKey);
     if (cached && !page) return cached;
@@ -119,25 +123,32 @@ async function getAllTrackFiles(page = null, perPage = null) {
       .from('tracks')
       .list();
 
-    if (error) throw error;
+    if (error) {
+      console.error('Error listing files:', error);
+      throw error;
+    }
 
+    console.log('Raw file list from Supabase:', data.map(item => item.name));
     const files = [];
     const seenIds = new Set();
     for (const item of data) {
+      console.log('Processing file:', item.name);
       if (!item.name.endsWith('.json')) continue;
-      const id = parseInt(item.name.split('-')[0], 10);
+      const [idStr, ...slugParts] = item.name.split('-');
+      const id = parseInt(idStr, 10);
       if (isNaN(id)) {
         console.warn(`Invalid ID in filename: ${item.name}`);
         continue;
       }
-      if (seenIds.has(id)) {
-        console.warn(`Duplicate ID ${id} found in filename: ${item.name}`);
+      const slug = slugParts.join('-').replace(/\.json$/, '');
+      if (seenIds.has(`${id}-${slug}`)) {
+        console.warn(`Duplicate file ${id}-${slug} found in filename: ${item.name}`);
         continue;
       }
-      seenIds.add(id);
+      seenIds.add(`${id}-${slug}`);
       files.push({
         id,
-        slug: item.name.replace(/^\d+-/, '').replace(/\.json$/, ''),
+        slug,
         file: item.name,
       });
     }
@@ -165,6 +176,7 @@ async function getAllTrackFiles(page = null, perPage = null) {
       await kv.set(cacheKey, fullData, { ex: 604800 });
     }
 
+    console.log('Processed files with data:', fullData);
     return fullData;
   } catch (error) {
     console.error('Error fetching track files:', error.message);
@@ -192,8 +204,9 @@ async function getLatestId(force = false) {
 }
 
 const generatePermalink = (artist, title) => {
-  if (!artist || !title) return 'default-permalink';
-  return slugify(`${artist}-${title}`, { lower: true, strict: true, remove: /[*+*~.()'"!:@]/g });
+  const slug = slugify(`${artist}-${title}`, { lower: true, strict: true, remove: /[*+~.()'"!:@]/g });
+  console.log(`Generated permalink for ${artist} - ${title}: ${slug}`);
+  return slug;
 };
 
 const getFormattedDate = (format) => {
@@ -995,19 +1008,14 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
     const existingFiles = await getAllTrackFiles();
     let latestId = await getLatestId(true);
 
-    const idAssignments = trackData.map((_, index) => latestId + index + 1);
-    const conflicts = idAssignments.filter(id => existingFiles.some(file => file.id === id));
-    if (conflicts.length > 0) {
-      await kv.del('latest_id');
-      await kv.del('supabase:track_files');
-      latestId = await getLatestId(true);
-      const newIdAssignments = trackData.map((_, index) => latestId + index + 1);
-      const newConflicts = newIdAssignments.filter(id => existingFiles.some(file => file.id === id));
-      if (newConflicts.length > 0) {
-        throw new Error(`ID conflicts detected: ${newConflicts.join(', ')}. Clear cache or check storage.`);
+    const idAssignments = trackData.map((_, index) => {
+      let newId = latestId + index + 1;
+      while (existingFiles.some(file => file.id === newId)) {
+        newId++;
       }
-      idAssignments.splice(0, idAssignments.length, ...newIdAssignments);
-    }
+      return newId;
+    });
+    console.log('Assigned IDs:', idAssignments);
 
     const results = [];
     const errors = [];
@@ -1110,13 +1118,14 @@ app.post('/panel/reset-cache', async (req, res) => {
 app.get('/track/:id/:permalink', async (req, res) => {
   try {
     const { id, permalink } = req.params;
+    console.log(`Requested ID: ${id}, Permalink: ${permalink}`);
     const files = await getAllTrackFiles();
+    console.log('Available files:', files.map(f => `${f.id}-${f.slug}`));
     const trackItem = files.find(item => item.id === parseInt(id) && item.slug === permalink);
     if (!trackItem) {
       console.error(`Track with ID ${id} and permalink ${permalink} not found`);
       return res.status(404).send('Post not found');
     }
-
     const post = await getSupabaseFile(trackItem.id, trackItem.slug);
 
     const related = files
@@ -1254,7 +1263,7 @@ app.get('/search', async (req, res) => {
     if (page > totalPages && totalPosts > 0) return res.redirect(`/search?q=${encodeURIComponent(query)}&page=${totalPages}`);
 
     const startIndex = (page - 1) * postsPerPage;
-    const paginatedPosts = filteredFiles.slice(startIndex, startIndex + postsPerPage);
+    const paginatedPosts = filteredFiles.slice(startIndex, startIndex + perPage);
 
     const searchResults = parseBlogTags(getPostListTemplate(), paginatedPosts, { limit: postsPerPage, noMessage: '<center>No File</center>' });
     const pagination = generatePagination(page, totalPages, '/search', query);
