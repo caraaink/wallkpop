@@ -397,23 +397,23 @@ const parseBlogTags = (template, posts, options = {}) => {
                .replace(/\t/g, '\\t');
     };
 
-    const linkOriginal = `<a href="https://meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(stripProtocol(post.thumb || ''))}&to-size=${encodeURIComponent(post.size || '')}&to-link2=${encodeURIComponent(stripProtocol(post.link2 || '')))}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(stripProtocol(post.link || '')) || ''}&to-size=${encodeURIComponent(post.size || '')}&sizeori=${encodeURIComponent(post.size || ''))}" target="_blank">
-      <button class="text downd bitrate-192"><span class="source medium-label">MQ</span><div class="title">Download Now</div><div class="size">(${post.size || ''})</div><span class="size bitrate">${post.bitrate || '192'} kb/s</span></button>
+    const linkOriginal = `<a href="https://meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(stripProtocol(post.thumb || ''))}&to-size=${encodeURIComponent(post.size || '')}&to-link2=${encodeURIComponent(stripProtocol(post.link2 || ''))}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(stripProtocol(post.link || ''))}&to-sizeori=${encodeURIComponent(post.size || '')}" target="_blank">
+      <button class="downd bitrate-192"><span class="medium-label">MQ</span><div class="title">Download Now</div><div class="size">(${post.size || ''})</div><span class="bitrate">${post.bitrate || '192'} kb/s</span></button>
     </a>`;
 
-    const link320 = post.url320 ? `<a href="https://meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(stripProtocol(post.thumb || ''))}to-size=&to=${encodeURIComponent(stripProtocol(post.url320 || '')))}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(stripProtocol(post.link || ''))}&to-size=${encodeURIComponent(post.size320 || ''))} target="_blank">
+    const link320 = post.url320 ? `<a href="https://meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(stripProtocol(post.thumb || ''))}&to-size=${encodeURIComponent(post.size320 || '')}&to-link2=${encodeURIComponent(stripProtocol(post.url320 || ''))}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(stripProtocol(post.link || ''))}&to-sizeori=${encodeURIComponent(post.size320 || '')}" target="_blank">
       <button class="downd bitrate-320"><span class="hq-label">HQ</span><div class="title">Download Now</div><div class="size">(${post.size320 || ''})</div><span class="bitrate">${post.bitrate320 || '320'} kb/s</span></button>
     </a>` : '';
 
-    const link192 = post.url192 ? `<a href="https://meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(stripProtocol(post.thumb || ''))}to-size=&${encodeURIComponent(post.url192(stripProtocol(post.url192 || '')))}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(stripProtocol(post.link || '')))}&to-size=${encodeURIComponent(post.size192 || ''))} target="_blank">
+    const link192 = post.url192 ? `<a href="https://meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(stripProtocol(post.thumb || ''))}&to-size=${encodeURIComponent(post.size192 || '')}&to-link2=${encodeURIComponent(stripProtocol(post.url192 || ''))}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(stripProtocol(post.link || ''))}&to-sizeori=${encodeURIComponent(post.size192 || '')}" target="_blank">
       <button class="downd bitrate-192"><span class="medium-label">MQ</span><div class="title">Download Now</div><div class="size">(${post.size192 || ''})</div><span class="bitrate">${post.bitrate192 || '192'} kb/s</span></button>
     </a>` : '';
 
-    const link128 = post.url128 ? `<a href="https://meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(stripProtocol(post.thumb || '')))}&to-size=${encodeURIComponent(post.url128(stripProtocol(post.url128 || '')))}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(stripProtocol(post.link || '')))}&to-size=${encodeURIComponent(post.size128 || ''))} target="_blank">
+    const link128 = post.url128 ? `<a href="https://meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(stripProtocol(post.thumb || ''))}&to-size=${encodeURIComponent(post.size128 || '')}&to-link2=${encodeURIComponent(stripProtocol(post.url128 || ''))}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(stripProtocol(post.link || ''))}&to-sizeori=${encodeURIComponent(post.size128 || '')}" target="_blank">
       <button class="downd bitrate-128"><span class="low-label">LQ</span><div class="title">Download Now</div><div class="size">(${post.size128 || ''})</div><span class="bitrate">${post.bitrate128 || '128'} kb/s</span></button>
     </a>` : '';
 
-    const downloadButtons = link320 || link192 || link128
+    let downloadButtons = link320 || link192 || link128
       ? `<div class="download-buttons">${link320}${link192}${link128}</div>`
       : `<div class="download-buttons">${linkOriginal}</div>`;
 
