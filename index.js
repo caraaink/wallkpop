@@ -15,6 +15,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://bkoouiocqfoubimtrode.supabase.co';
 const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJrb291aW9jcWZvdWJpbXRyb2RlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAzOTMyMzgsImV4cCI6MjA2NTk2OTIzOH0.o4T65bB3vbtVXOydTvBO_tK4dm5uMvoLvLFEW4ER5gk';
 const supabase = createClient(supabaseUrl, supabaseKey);
+const supabaseAdmin = createClient(supabaseUrl, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
 const GOOGLE_DRIVE_API_KEY = 'AIzaSyD00uLzmHdXXCQzlA2ibiYg2bzdbl89JOM';
 const PANEL_PASSWORD = 'eren19';
@@ -76,11 +77,12 @@ async function checkFileExists(id, slug) {
   }
 }
 
-async function updateSupabaseFile(id, slug, content, retries = 2) {
+async function updateSupabaseFile(id, slug, content, retries = 2, isAdmin = false) {
+  const supabaseClient = isAdmin ? supabaseAdmin : supabase;
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       const filePath = `${id}-${slug}.json`;
-      const { error } = await supabase.storage
+      const { error } = await supabaseClient.storage
         .from('tracks')
         .upload(filePath, JSON.stringify(content, null, 2), {
           contentType: 'application/json',
@@ -1087,7 +1089,7 @@ async function processTrack(trackData, existingFiles, newId) {
     hits: trackData.hits || '0'
   };
 
-  await updateSupabaseFile(newId, slug, finalTrackData);
+  await updateSupabaseFile(newId, slug, finalTrackData, 2, true);
 
   return { id: newId, permalink: `/track/${newId}/${slug}` };
 }
