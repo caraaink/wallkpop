@@ -7,17 +7,19 @@ const path = require('path');
 const fs = require('fs').promises;
 const { createClient } = require('webdav');
 
+require('dotenv').config();
+
 const app = express();
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Konfigurasi WebDAV untuk Seafile
-const seafile = createClient('https://plus.seafile.com/seafdav/', {
-  username: 'caraaink@gmail.com',
-  password: 'fahmiaink'
+const seafile = createClient(process.env.SEAFILE_WEBDAV_URL, {
+  username: process.env.SEAFILE_USERNAME,
+  password: process.env.SEAFILE_PASSWORD
 });
-const libraryPath = '/wallkpop'; // Library Seafile bernama 'wallkpop'
+const libraryPath = '/20ebefa8-9f0a-446b-baed-d4869d1c18f8'; // ID library wallkpop
 const GOOGLE_DRIVE_API_KEY = 'AIzaSyD00uLzmHdXXCQzlA2ibiYg2bzdbl89JOM';
 const PANEL_PASSWORD = 'eren19';
 
@@ -80,9 +82,9 @@ async function updateSeafileFile(path, content, message, retries = 2) {
       await kv.del('latest_id');
       return;
     } catch (error) {
-      if (attempt < retries && (error.status === 429 || error.message.includes('rate limit'))) {
+      if (attempt < retries && (error.status === 429 || error.status === 502)) {
         const delay = Math.pow(2, attempt) * 1000;
-        console.warn(`Rate limit hit for ${path}, retrying in ${delay}ms...`);
+        console.warn(`Error ${error.status} for ${path}, retrying in ${delay}ms...`);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }
@@ -147,6 +149,12 @@ async function getAllTrackFiles(page = null, perPage = null) {
     return fullData;
   } catch (error) {
     console.error('Error fetching track files:', error.message);
+    if (error.status === 502) {
+      console.warn('Seafile server returned 502 Bad Gateway. Retrying with cached data if available.');
+      const cached = await kv.get('seafile:track_files');
+      if (cached) return cached;
+      throw new Error('Seafile server unavailable (502 Bad Gateway) and no cached data available');
+    }
     if (error.status === 404) return [];
     throw error;
   }
@@ -300,7 +308,7 @@ const getFooter = (pageUrl) => `
       </div>
       <div class="center">
         <a href="https://www.facebook.com/wallkpop_official" title="Follow Facebook" style="background:#1877F2;color:#fff;padding:3px 8px;margin:1px;border:1px solid #ddd;font-weight:bold;border-radius:4px;display:inline-block;" target="_blank">Facebook</a>
-        <a href="https://www.instagram.com/wallkpop.official" title="Follow Instagram" style="background:linear-gradient(45deg, #f09433, #e6683c, #HASE#dc2743, #cc2366, #bc1888);color:#ffffff;padding:3px 8px;margin:1px;font-weight:bold;border:1px solid #ddd;border-radius:4px;display:inline-block;" target="_blank">Instagram</a>
+        <a href="https://www.instagram.com/wallkpop.official" title="Follow Instagram" style="background:linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888);color:#ffffff;padding:3px 8px;margin:1px;font-weight:bold;border:1px solid #ddd;border-radius:4px;display:inline-block;" target="_blank">Instagram</a>
         <a href="https://x.com/wallkpop_mp3" title="Follow X" style="background:#000000;color:#ffffff;padding:3px 8px;margin:1px;font-weight:bold;border:1px solid #ddd;border-radius:4px;display:inline-block;" target="_blank">X</a>
         <a href="whatsapp://send?text=Wallkpop | Download Latest K-Pop Music MP3%0a%20${pageUrl}" title="Bagikan ke WhatsApp" style="background:#019C00;color:#ffffff;padding:3px 8px;margin:1px;font-weight:bold;border:1px solid #ddd;border-radius:4px;display:inline-block;">WA</a>
         <a href="https://t.me/wallkpopmp3" title="Join Telegram" style="background:#0088CC;color:#ffffff;padding:3px 8px;margin:1px;font-weight:bold;border:1px solid #ddd;border-radius:4px;display:inline-block;" target="_blank">Telegram</a>
@@ -375,37 +383,37 @@ const parseBlogTags = (template, posts, options = {}) => {
     const driveRegex = /https:\/\/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)\/view/;
     const match = link2.match(driveRegex);
     if (match && match[1]) {
-      link2 = `https://www.googleapis.com/drive/v3/files/${match[1]}?alt=media&key=${GOOGLE_DRIVE_API_KEY}`;
+      link2 = `https://www.googleapis.com/drive/v3/files/${match[1]}?alt=media&key=${encodeURIComponent(GOOGLE_DRIVE_API_KEY)}`;
     }
 
     const renderIfNotEmpty = (value, htmlTemplate) => value ? htmlTemplate.replace('%value%', value) : '';
 
-    const escapeForJS = (str) => {
-      if (!str) return '';
-      return str.replace(/\\/g, '\\\\')
+    const encode = (value) => {
+      if (!value) return '';
+      return value.replace(/\\/g, '\\\\')
                .replace(/"/g, '\\"')
                .replace(/\n/g, '\\n')
                .replace(/\r/g, '\\r')
                .replace(/\t/g, '\\t');
     };
 
-    const linkOriginal = `<a href="https://meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(stripProtocol(post.thumb || ''))}&to-size=${encodeURIComponent(post.size || '')}&to-link2=${encodeURIComponent(stripProtocol(post.link2 || ''))}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(stripProtocol(post.link || ''))}&to-sizeori=${encodeURIComponent(post.size || '')}" target="_blank">
-      <button class="downd bitrate-192"><span class="medium-label">MQ</span><div class="title">Download Now</div><div class="size">(${post.size || ''})</div><span class="bitrate">${post.bitrate || '192'} kb/s</span></button>
+    const linkOriginal = `<a href="https://meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(stripProtocol(post.thumb || ''))}&to-size=${encodeURIComponent(post.size || '')}&to-link2=${encodeURIComponent(stripProtocol(post.link2 || '')))}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(stripProtocol(post.link || '')) || ''}&to-size=${encodeURIComponent(post.size || '')}&sizeori=${encodeURIComponent(post.size || ''))}" target="_blank">
+      <button class="text downd bitrate-192"><span class="source medium-label">MQ</span><div class="title">Download Now</div><div class="size">(${post.size || ''})</div><span class="size bitrate">${post.bitrate || '192'} kb/s</span></button>
     </a>`;
 
-    const link320 = post.url320 ? `<a href="https://meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(stripProtocol(post.thumb || ''))}&to-size=${encodeURIComponent(post.size320 || '')}&to-link2=${encodeURIComponent(stripProtocol(post.url320 || ''))}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(stripProtocol(post.link || ''))}&to-sizeori=${encodeURIComponent(post.size320 || '')}" target="_blank">
+    const link320 = post.url320 ? `<a href="https://meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(stripProtocol(post.thumb || ''))}to-size=&to=${encodeURIComponent(stripProtocol(post.url320 || '')))}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(stripProtocol(post.link || ''))}&to-size=${encodeURIComponent(post.size320 || ''))} target="_blank">
       <button class="downd bitrate-320"><span class="hq-label">HQ</span><div class="title">Download Now</div><div class="size">(${post.size320 || ''})</div><span class="bitrate">${post.bitrate320 || '320'} kb/s</span></button>
     </a>` : '';
 
-    const link192 = post.url192 ? `<a href="https://meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(stripProtocol(post.thumb || ''))}&to-size=${encodeURIComponent(post.size192 || '')}&to-link2=${encodeURIComponent(stripProtocol(post.url192 || ''))}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(stripProtocol(post.link || ''))}&to-sizeori=${encodeURIComponent(post.size192 || '')}" target="_blank">
+    const link192 = post.url192 ? `<a href="https://meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(stripProtocol(post.thumb || ''))}to-size=&${encodeURIComponent(post.url192(stripProtocol(post.url192 || '')))}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(stripProtocol(post.link || '')))}&to-size=${encodeURIComponent(post.size192 || ''))} target="_blank">
       <button class="downd bitrate-192"><span class="medium-label">MQ</span><div class="title">Download Now</div><div class="size">(${post.size192 || ''})</div><span class="bitrate">${post.bitrate192 || '192'} kb/s</span></button>
     </a>` : '';
 
-    const link128 = post.url128 ? `<a href="https://meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(stripProtocol(post.thumb || ''))}&to-size=${encodeURIComponent(post.size128 || '')}&to-link2=${encodeURIComponent(stripProtocol(post.url128 || ''))}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(stripProtocol(post.link || ''))}&to-sizeori=${encodeURIComponent(post.size128 || '')}" target="_blank">
+    const link128 = post.url128 ? `<a href="https://meownime.wapkizs.com/page-convert.html?to-thumb=${encodeURIComponent(stripProtocol(post.thumb || '')))}&to-size=${encodeURIComponent(post.url128(stripProtocol(post.url128 || '')))}&to-artist=${encodeURIComponent(post.artist || '')}&to-title=${encodeURIComponent(post.title || '')}&to-link=${encodeURIComponent(stripProtocol(post.link || '')))}&to-size=${encodeURIComponent(post.size128 || ''))} target="_blank">
       <button class="downd bitrate-128"><span class="low-label">LQ</span><div class="title">Download Now</div><div class="size">(${post.size128 || ''})</div><span class="bitrate">${post.bitrate128 || '128'} kb/s</span></button>
     </a>` : '';
 
-    let downloadButtons = link320 || link192 || link128
+    const downloadButtons = link320 || link192 || link128
       ? `<div class="download-buttons">${link320}${link192}${link128}</div>`
       : `<div class="download-buttons">${linkOriginal}</div>`;
 
@@ -432,7 +440,7 @@ const parseBlogTags = (template, posts, options = {}) => {
       .replace(/%var-url192%/g, post.url192 || post.link || '#')
       .replace(/%var-url320%/g, post.url320 || post.link || '#')
       .replace(/%hits%/g, post.hits || '0')
-      .replace(/%var-lyricstimestamp%/g, escapeForJS(post.lyricstimestamp || ''))
+      .replace(/%var-lyricstimestamp%/g, encode(post.lyricstimestamp || ''))
       .replace(/%var-lyrics%/g, post.lyrics || '')
       .replace(/%var-name%/g, post.name || `${post.artist} - ${post.title}`)
       .replace(/%sn%/g, index + 1)
@@ -495,13 +503,18 @@ app.get(['/', '/page/:page'], async (req, res) => {
     const postsPerPage = 40;
 
     const cacheKey = `index:page:${page}`;
-    const cached = await kv.get(cacheKey);
-    if (cached) {
-      return res.send(cached);
+    let cached = await kv.get(cacheKey);
+    if (cached) return res.send(cached);
+
+    let posts = await getAllTrackFiles(page, postsPerPage);
+    if (!posts || posts.length === 0) {
+      console.warn('No posts fetched, falling back to full cache');
+      posts = await kv.get('seafile:track_files') || [];
+      if (posts.length === 0) throw new Error('No data available');
+      posts = posts.slice((page - 1) * postsPerPage, page * postsPerPage);
     }
 
-    const posts = await getAllTrackFiles(page, postsPerPage);
-    const totalPosts = (await getAllTrackFiles()).length;
+    const totalPosts = (await kv.get('seafile:track_files') || posts).length;
     const totalPages = Math.ceil(totalPosts / postsPerPage);
 
     if (page > totalPages && totalPosts > 0) return res.redirect(`/page/${totalPages}`);
@@ -538,19 +551,20 @@ app.get(['/', '/page/:page'], async (req, res) => {
     res.send(html);
   } catch (error) {
     console.error('Error fetching posts:', error);
-    res.status(500).send('Error loading posts');
+    res.status(500).send('Error loading posts: ' + error.message);
   }
 });
 
 app.get('/sitemap.xml', async (req, res) => {
   try {
     const posts = await getAllTrackFiles();
-    const limitedPosts = posts.slice(0, 500);
-    const postsPerPage = 40;
-    const totalPages = Math.ceil(posts.length / postsPerPage);
+    const postsPerPage = posts.slice(0, 500);
+    const totalPages = postsPerPage = 40;
+
+    const totalPosts = Math.ceil(posts.length / postsPerPage);
 
     let sitemap = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<urlset xmlns="http://www.sitemaps.org/sitemap/0.9">
   <url>
     <loc>https://wallkpop.vercel.app/</loc>
     <lastmod>${getFormattedDate('Y-m-d')}</lastmod>
@@ -558,7 +572,7 @@ app.get('/sitemap.xml', async (req, res) => {
     <priority>1.0</priority>
   </url>`;
 
-    for (const post of limitedPosts) {
+    for (const post of posts) {
       const permalink = generatePermalink(post.artist, post.title);
       sitemap += `
   <url>
@@ -595,11 +609,11 @@ User-agent: *
 Allow: /
 Allow: /track/
 Allow: /page/
-Allow: /search
-Disallow: /panel
+Allow: /search/
+Disallow: /panel/
 Sitemap: https://wallkpop.vercel.app/sitemap.xml
 `;
-  res.header('Content-Type', 'text/plain');
+  robotsTxt.res.header('Content-Type', 'text/plain');
   res.send(robotsTxt);
 });
 
@@ -613,8 +627,8 @@ app.get('/panel', async (req, res) => {
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>Panel Login | Wallkpop</title>
         <style>
-          body { font-family: 'Lora', Arial, sans-serif; margin: 0; padding: 0; display: flex; flex-direction: column; align-items: center; min-height: 100vh; background: #f4f4f4; box-sizing: border-box; }
-          .login-container { max-width: 400px; padding: 20px; background: white; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); margin: 20px auto; box-sizing: border-box; }
+          body { font-family: 'Courier New', Arial, sans-serif; margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; flex-direction: column; min-height: 100vh; background: #f4f4f4; box-sizing: border-box; }
+          .login-container { max-width: 400px; width: 100%; padding: 20px; margin: 20px auto; background: white; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); box-sizing: border-box; }
           .form-container { max-width: 900px; margin: 40px auto; padding: 20px; background: white; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); box-sizing: border-box; padding-top: 20px; }
           .form-group { margin-bottom: 20px; }
           .form-group label { display: block; margin-bottom: 8px; font-weight: bold; }
@@ -640,8 +654,8 @@ app.get('/panel', async (req, res) => {
               const now = new Date().getTime();
               const twentyFourHours = 24 * 60 * 60 * 1000;
               if (now - timestamp < twentyFourHours) {
-                document.getElementById('login-form').style.display = 'none';
-                document.getElementById('panel-content').style.display = 'block';
+                document.getElementById('login-form').id.style.display = 'none';
+                document.getElementById('panel-content').id.style.display = 'block';
                 return;
               } else {
                 localStorage.removeItem('panelLogin');
@@ -767,22 +781,22 @@ app.get('/panel', async (req, res) => {
                 </div>
                 <div class="form-group">
                   <label for="var-size">Size (MB)</label>
-                  <input type="text" id="var-size" name="var-size">
+                  <input type="text" id="var-id-size" name="var-size">
                 </div>
                 <div class="form-group">
                   <label for="var-size128">Size 128kbps (MB)</label>
-                  <input type="text" id="var-size128" name="var-size128">
+                  <input type="text" id="var-size128kbps" name="var-size128">
                 </div>
                 <div class="form-group">
                   <label for="var-size192">Size 192kbps (MB)</label>
-                  <input type="text" id="var-size192" name="var-size192">
+                  <input type="text" id="var-size192kbps" name="var-size192">
                 </div>
                 <div class="form-group">
                   <label for="var-size320">Size 320kbps (MB)</label>
-                  <input type="text" id="var-size320" name="var-size320">
+                  <input type="text" id="var-size320kbps" name="var-size320">
                 </div>
                 <div class="form-group">
-                  <label for="var-bitrate">Bitrate (kbps)</label>
+                  <label for="var-bitrate">Bitrate</label>
                   <input type="text" id="var-bitrate" name="var-bitrate" value="192">
                 </div>
                 <div class="form-group">
@@ -799,39 +813,39 @@ app.get('/panel', async (req, res) => {
                 </div>
                 <div class="form-group">
                   <label for="var-thumb">Thumbnail URL</label>
-                  <input type="text" id="var-thumb" name="var-thumb">
+                  <input type="url" id="var-thmb" name="var-thumb">
                 </div>
                 <div class="form-group">
                   <label for="var-link">Download Link</label>
-                  <input type="text" id="var-link" name="var-link">
+                  <input type="url" id="var-lnk" name="var-link">
                 </div>
                 <div class="form-group">
                   <label for="var-link2">Alternative Download Link</label>
-                  <input type="text" id="var-link2" name="var-link2">
+                  <input type="url" id="var-lnk2" name="var-link2">
                 </div>
                 <div class="form-group">
                   <label for="var-url128">Download URL (128kbps)</label>
-                  <input type="text" id="var-url128" name="var-url128">
+                  <input type="url" id="var-url128kbps" name="var-url128">
                 </div>
                 <div class="form-group">
                   <label for="var-url192">Download URL (192kbps)</label>
-                  <input type="text" id="var-url192" name="var-url192">
+                  <input type="url" id="var-url192kbps" name="var-url192">
                 </div>
                 <div class="form-group">
                   <label for="var-url320">Download URL (320kbps)</label>
-                  <input type="text" id="var-url320" name="var-url320">
+                  <input type="url" id="var-url320kbps" name="var-url320">
                 </div>
                 <div class="form-group">
                   <label for="var-lyricstimestamp">Lyrics Timestamp</label>
-                  <textarea id="var-lyricstimestamp" name="var-lyricstimestamp"></textarea>
+                  <textarea id="var-lyricstmstmp" name="var-lyricstimestamp"></textarea>
                 </div>
                 <div class="form-group">
                   <label for="var-lyrics">Lyrics</label>
-                  <textarea id="var-lyrics" name="var-lyrics"></textarea>
+                  <textarea id="var-lyrcs" name="var-lyrics"></textarea>
                 </div>
                 <div class="form-group">
                   <label for="var-name">File Name</label>
-                  <input type="text" id="var-name" name="var-name">
+                  <input type="text" id="var-nme" name="var-name">
                 </div>
                 <div class="button-group">
                   <button type="submit" id="submit-btn" class="submit-btn">Upload Track</button>
