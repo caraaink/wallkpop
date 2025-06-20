@@ -1,25 +1,30 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const slugify = require('slugify');
+const { createClient } = require('@supabase/supabase-js');
 const { kv } = require('@vercel/kv');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs').promises;
-const { createClient } = require('webdav');
-
-require('dotenv').config();
 
 const app = express();
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Konfigurasi WebDAV untuk Seafile
-const seafile = createClient(process.env.SEAFILE_WEBDAV_URL, {
-  username: process.env.SEAFILE_USERNAME,
-  password: process.env.SEAFILE_PASSWORD
-});
-const libraryPath = '/20ebefa8-9f0a-446b-baed-d4869d1c18f8'; // ID library wallkpop
+const supabase = createClient(
+  process.env.S3_ENDPOINT,
+  process.env.S3_SECRET_ACCESS_KEY,
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false
+    }
+  }
+);
+
+const S3_BUCKET = process.env.S3_BUCKET || 'tracks';
 const GOOGLE_DRIVE_API_KEY = 'AIzaSyD00uLzmHdXXCQzlA2ibiYg2bzdbl89JOM';
 const PANEL_PASSWORD = 'eren19';
 
@@ -35,60 +40,82 @@ const upload = multer({
   }
 });
 
-async function getSeafileFile(path) {
+async function getSupabaseFile(path) {
   try {
-    const cacheKey = `seafile:${path}`;
+    const cacheKey = `supabase:${path}`;
     const cached = await kv.get(cacheKey);
     if (cached) return cached;
 
-    const content = await seafile.getFileContents(`${libraryPath}/${path}`, { format: 'text' });
+    const { data, error } = await supabase.storage
+      .from(S3_BUCKET)
+      .download(path);
+
+    if (error) {
+      throw new Error(`Error downloading ${path}: ${error.message}`);
+    }
+
+    const content = await data.text();
     if (!content.trim()) {
       throw new Error(`Empty content for ${path}`);
     }
 
-    let data;
+    let parsedData;
     try {
-      data = JSON.parse(content);
+      parsedData = JSON.parse(content);
     } catch (parseError) {
       console.error(`Invalid JSON in ${path}: ${content.slice(0, 100)}...`);
       throw new Error(`Invalid JSON in ${path}: ${parseError.message}`);
     }
 
-    await kv.set(cacheKey, data, { ex: 604800 });
-    return data;
+    await kv.set(cacheKey, parsedData, { ex: 604800 });
+    return parsedData;
   } catch (error) {
-    console.error(`Error fetching Seafile file ${path}:`, error.message);
+    console.error(`Error fetching Supabase file ${path}:`, error.message);
     throw error;
   }
 }
 
 async function checkFileExists(path) {
   try {
-    await seafile.getFileContents(`${libraryPath}/${path}`, { format: 'text' });
-    return true;
+    const { data, error } = await supabase.storage
+      .from(S3_BUCKET)
+      .list('', { limit: 1, search: path });
+
+    if (error) throw error;
+    return data.length > 0 ? data[0].id : null;
   } catch (error) {
-    if (error.status === 404) return false;
+    if (error.status === 404) return null;
     throw error;
   }
 }
 
-async function updateSeafileFile(path, content, message, retries = 2) {
+async function updateSupabaseFile(path, content, message, retries = 2) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      await seafile.putFileContents(`${libraryPath}/${path}`, JSON.stringify(content, null, 2));
-      const cacheKey = `seafile:${path}`;
+      const { error } = await supabase.storage
+        .from(S3_BUCKET)
+        .upload(path, Buffer.from(JSON.stringify(content, null, 2)), {
+          contentType: 'application/json',
+          upsert: true
+        });
+
+      if (error) {
+        throw new Error(`Error uploading ${path}: ${error.message}`);
+      }
+
+      const cacheKey = `supabase:${path}`;
       await kv.set(cacheKey, content, { ex: 604800 });
-      await kv.del('seafile:track_files');
+      await kv.del('supabase:track_files');
       await kv.del('latest_id');
-      return;
+      return true;
     } catch (error) {
-      if (attempt < retries && (error.status === 429 || error.status === 502)) {
+      if (attempt < retries && (error.status === 429 || error.message.includes('rate limit'))) {
         const delay = Math.pow(2, attempt) * 1000;
-        console.warn(`Error ${error.status} for ${path}, retrying in ${delay}ms...`);
+        console.warn(`Rate limit hit for ${path}, retrying in ${delay}ms...`);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }
-      console.error(`Error updating Seafile file ${path}:`, error.message);
+      console.error(`Error updating Supabase file ${path}:`, error.message);
       throw error;
     }
   }
@@ -96,45 +123,52 @@ async function updateSeafileFile(path, content, message, retries = 2) {
 
 async function getAllTrackFiles(page = null, perPage = null) {
   try {
-    const cacheKey = 'seafile:track_files';
+    const cacheKey = 'supabase:track_files';
     let cached = await kv.get(cacheKey);
     if (cached && !page) return cached;
 
-    const files = await seafile.getDirectoryContents(libraryPath);
-    const trackFiles = [];
-    const seenIds = new Set();
+    const { data, error } = await supabase.storage
+      .from(S3_BUCKET)
+      .list('file', { limit: 1000 });
 
-    for (const item of files) {
-      if (item.type !== 'file' || !item.basename.endsWith('.json')) continue;
-      const id = parseInt(item.basename.split('-')[0], 10);
+    if (error) {
+      throw new Error(`Error listing files: ${error.message}`);
+    }
+
+    const files = [];
+    const seenIds = new Set();
+    for (const item of data) {
+      if (!item.name.endsWith('.json')) continue;
+      const id = parseInt(item.name.split('-')[0], 10);
       if (isNaN(id)) {
-        console.warn(`Invalid ID in filename: ${item.basename}`);
+        console.warn(`Invalid ID in filename: ${item.name}`);
         continue;
       }
       if (seenIds.has(id)) {
-        console.warn(`Duplicate ID ${id} found in filename: ${item.basename}`);
+        console.warn(`Duplicate ID ${id} found in filename: ${item.name}`);
         continue;
       }
       seenIds.add(id);
-      trackFiles.push({
+      files.push({
         id,
-        slug: item.basename.replace(/^\d+-/, '').replace(/\.json$/, ''),
-        file: item.basename
+        slug: item.name.replace(/^\d+-/, '').replace(/\.json$/, ''),
+        file: `file/${item.name}`,
+        created_at: item.created_at
       });
     }
 
-    trackFiles.sort((a, b) => b.id - a.id);
+    files.sort((a, b) => b.id - a.id);
 
-    let result = trackFiles;
+    let result = files;
     if (page && perPage) {
       const startIndex = (page - 1) * perPage;
-      result = trackFiles.slice(startIndex, startIndex + perPage);
+      result = files.slice(startIndex, startIndex + perPage);
     }
 
     const fullData = [];
     for (const file of result) {
       try {
-        const track = await getSeafileFile(file.file);
+        const track = await getSupabaseFile(file.file);
         fullData.push({ ...track, id: file.id, file: file.file });
       } catch (error) {
         console.error(`Skipping file ${file.file} due to error: ${error.message}`);
@@ -149,12 +183,6 @@ async function getAllTrackFiles(page = null, perPage = null) {
     return fullData;
   } catch (error) {
     console.error('Error fetching track files:', error.message);
-    if (error.status === 502) {
-      console.warn('Seafile server returned 502 Bad Gateway. Retrying with cached data if available.');
-      const cached = await kv.get('seafile:track_files');
-      if (cached) return cached;
-      throw new Error('Seafile server unavailable (502 Bad Gateway) and no cached data available');
-    }
     if (error.status === 404) return [];
     throw error;
   }
@@ -286,6 +314,7 @@ const getHeader = (searchQuery = '') => `
         <ul>
           <li><a href="/">Home</a></li>
           <li><a href="/search?q=Dance">Dance</a></li>
+ ministère
           <li><a href="/search?q=Ballad">Ballad</a></li>
           <li><a href="/search?q=Soundtrack">Soundtrack</a></li>
         </ul>
@@ -383,14 +412,14 @@ const parseBlogTags = (template, posts, options = {}) => {
     const driveRegex = /https:\/\/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)\/view/;
     const match = link2.match(driveRegex);
     if (match && match[1]) {
-      link2 = `https://www.googleapis.com/drive/v3/files/${match[1]}?alt=media&key=${encodeURIComponent(GOOGLE_DRIVE_API_KEY)}`;
+      link2 = `https://www.googleapis.com/drive/v3/files/${match[1]}?alt=media&key=${GOOGLE_DRIVE_API_KEY}`;
     }
 
     const renderIfNotEmpty = (value, htmlTemplate) => value ? htmlTemplate.replace('%value%', value) : '';
 
-    const encode = (value) => {
-      if (!value) return '';
-      return value.replace(/\\/g, '\\\\')
+    const escapeForJS = (str) => {
+      if (!str) return '';
+      return str.replace(/\\/g, '\\\\')
                .replace(/"/g, '\\"')
                .replace(/\n/g, '\\n')
                .replace(/\r/g, '\\r')
@@ -440,14 +469,14 @@ const parseBlogTags = (template, posts, options = {}) => {
       .replace(/%var-url192%/g, post.url192 || post.link || '#')
       .replace(/%var-url320%/g, post.url320 || post.link || '#')
       .replace(/%hits%/g, post.hits || '0')
-      .replace(/%var-lyricstimestamp%/g, encode(post.lyricstimestamp || ''))
+      .replace(/%var-lyricstimestamp%/g, escapeForJS(post.lyricstimestamp || ''))
       .replace(/%var-lyrics%/g, post.lyrics || '')
       .replace(/%var-name%/g, post.name || `${post.artist} - ${post.title}`)
       .replace(/%sn%/g, index + 1)
       .replace(/%date=Y-m-d%/g, getFormattedDate('Y-m-d'))
       .replace(/%text%/g, post.year || '')
-      .replace(/:url-1\(:to-file:\):/g, `/track/%id%/:permalink:`)
-      .replace(/:page_url:/g, `https://wallkpop.vercel.app/track/%id%/:permalink:`)
+      .replace(/:url-1\(:to-file:\):/g, `/track/${post.id}/${permalink}`)
+      .replace(/:page_url:/g, `https://wallkpop.vercel.app/track/${post.id}/${permalink}`)
       .replace(/:permalink:/g, permalink)
       .replace(/%var-link_original%/g, linkOriginal)
       .replace(/%var-link320%/g, link320)
@@ -503,18 +532,13 @@ app.get(['/', '/page/:page'], async (req, res) => {
     const postsPerPage = 40;
 
     const cacheKey = `index:page:${page}`;
-    let cached = await kv.get(cacheKey);
-    if (cached) return res.send(cached);
-
-    let posts = await getAllTrackFiles(page, postsPerPage);
-    if (!posts || posts.length === 0) {
-      console.warn('No posts fetched, falling back to full cache');
-      posts = await kv.get('seafile:track_files') || [];
-      if (posts.length === 0) throw new Error('No data available');
-      posts = posts.slice((page - 1) * postsPerPage, page * postsPerPage);
+    const cached = await kv.get(cacheKey);
+    if (cached) {
+      return res.send(cached);
     }
 
-    const totalPosts = (await kv.get('seafile:track_files') || posts).length;
+    const posts = await getAllTrackFiles(page, postsPerPage);
+    const totalPosts = (await getAllTrackFiles()).length;
     const totalPages = Math.ceil(totalPosts / postsPerPage);
 
     if (page > totalPages && totalPosts > 0) return res.redirect(`/page/${totalPages}`);
@@ -551,20 +575,19 @@ app.get(['/', '/page/:page'], async (req, res) => {
     res.send(html);
   } catch (error) {
     console.error('Error fetching posts:', error);
-    res.status(500).send('Error loading posts: ' + error.message);
+    res.status(500).send('Error loading posts');
   }
 });
 
 app.get('/sitemap.xml', async (req, res) => {
   try {
     const posts = await getAllTrackFiles();
-    const postsPerPage = posts.slice(0, 500);
-    const totalPages = postsPerPage = 40;
-
-    const totalPosts = Math.ceil(posts.length / postsPerPage);
+    const limitedPosts = posts.slice(0, 500);
+    const postsPerPage = 40;
+    const totalPages = Math.ceil(posts.length / postsPerPage);
 
     let sitemap = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/sitemap/0.9">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://wallkpop.vercel.app/</loc>
     <lastmod>${getFormattedDate('Y-m-d')}</lastmod>
@@ -572,7 +595,7 @@ app.get('/sitemap.xml', async (req, res) => {
     <priority>1.0</priority>
   </url>`;
 
-    for (const post of posts) {
+    for (const post of limitedPosts) {
       const permalink = generatePermalink(post.artist, post.title);
       sitemap += `
   <url>
@@ -609,11 +632,11 @@ User-agent: *
 Allow: /
 Allow: /track/
 Allow: /page/
-Allow: /search/
-Disallow: /panel/
+Allow: /search
+Disallow: /panel
 Sitemap: https://wallkpop.vercel.app/sitemap.xml
 `;
-  robotsTxt.res.header('Content-Type', 'text/plain');
+  res.header('Content-Type', 'text/plain');
   res.send(robotsTxt);
 });
 
@@ -627,8 +650,8 @@ app.get('/panel', async (req, res) => {
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>Panel Login | Wallkpop</title>
         <style>
-          body { font-family: 'Courier New', Arial, sans-serif; margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; flex-direction: column; min-height: 100vh; background: #f4f4f4; box-sizing: border-box; }
-          .login-container { max-width: 400px; width: 100%; padding: 20px; margin: 20px auto; background: white; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); box-sizing: border-box; }
+          body { font-family: 'Lora', Arial, sans-serif; margin: 0; padding: 0; display: flex; flex-direction: column; align-items: center; min-height: 100vh; background: #f4f4f4; box-sizing: border-box; }
+          .login-container { max-width: 400px; padding: 20px; background: white; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); margin: 20px auto; box-sizing: border-box; }
           .form-container { max-width: 900px; margin: 40px auto; padding: 20px; background: white; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); box-sizing: border-box; padding-top: 20px; }
           .form-group { margin-bottom: 20px; }
           .form-group label { display: block; margin-bottom: 8px; font-weight: bold; }
@@ -654,8 +677,8 @@ app.get('/panel', async (req, res) => {
               const now = new Date().getTime();
               const twentyFourHours = 24 * 60 * 60 * 1000;
               if (now - timestamp < twentyFourHours) {
-                document.getElementById('login-form').id.style.display = 'none';
-                document.getElementById('panel-content').id.style.display = 'block';
+                document.getElementById('login-form').style.display = 'none';
+                document.getElementById('panel-content').style.display = 'block';
                 return;
               } else {
                 localStorage.removeItem('panelLogin');
@@ -781,22 +804,22 @@ app.get('/panel', async (req, res) => {
                 </div>
                 <div class="form-group">
                   <label for="var-size">Size (MB)</label>
-                  <input type="text" id="var-id-size" name="var-size">
+                  <input type="text" id="var-size" name="var-size">
                 </div>
                 <div class="form-group">
                   <label for="var-size128">Size 128kbps (MB)</label>
-                  <input type="text" id="var-size128kbps" name="var-size128">
+                  <input type="text" id="var-size128" name="var-size128">
                 </div>
                 <div class="form-group">
                   <label for="var-size192">Size 192kbps (MB)</label>
-                  <input type="text" id="var-size192kbps" name="var-size192">
+                  <input type="text" id="var-size192" name="var-size192">
                 </div>
                 <div class="form-group">
                   <label for="var-size320">Size 320kbps (MB)</label>
-                  <input type="text" id="var-size320kbps" name="var-size320">
+                  <input type="text" id="var-size320" name="var-size320">
                 </div>
                 <div class="form-group">
-                  <label for="var-bitrate">Bitrate</label>
+                  <label for="var-bitrate">Bitrate (kbps)</label>
                   <input type="text" id="var-bitrate" name="var-bitrate" value="192">
                 </div>
                 <div class="form-group">
@@ -813,39 +836,39 @@ app.get('/panel', async (req, res) => {
                 </div>
                 <div class="form-group">
                   <label for="var-thumb">Thumbnail URL</label>
-                  <input type="url" id="var-thmb" name="var-thumb">
+                  <input type="text" id="var-thumb" name="var-thumb">
                 </div>
                 <div class="form-group">
                   <label for="var-link">Download Link</label>
-                  <input type="url" id="var-lnk" name="var-link">
+                  <input type="text" id="var-link" name="var-link">
                 </div>
                 <div class="form-group">
                   <label for="var-link2">Alternative Download Link</label>
-                  <input type="url" id="var-lnk2" name="var-link2">
+                  <input type="text" id="var-link2" name="var-link2">
                 </div>
                 <div class="form-group">
                   <label for="var-url128">Download URL (128kbps)</label>
-                  <input type="url" id="var-url128kbps" name="var-url128">
+                  <input type="text" id="var-url128" name="var-url128">
                 </div>
                 <div class="form-group">
                   <label for="var-url192">Download URL (192kbps)</label>
-                  <input type="url" id="var-url192kbps" name="var-url192">
+                  <input type="text" id="var-url192" name="var-url192">
                 </div>
                 <div class="form-group">
                   <label for="var-url320">Download URL (320kbps)</label>
-                  <input type="url" id="var-url320kbps" name="var-url320">
+                  <input type="text" id="var-url320" name="var-url320">
                 </div>
                 <div class="form-group">
                   <label for="var-lyricstimestamp">Lyrics Timestamp</label>
-                  <textarea id="var-lyricstmstmp" name="var-lyricstimestamp"></textarea>
+                  <textarea id="var-lyricstimestamp" name="var-lyricstimestamp"></textarea>
                 </div>
                 <div class="form-group">
                   <label for="var-lyrics">Lyrics</label>
-                  <textarea id="var-lyrcs" name="var-lyrics"></textarea>
+                  <textarea id="var-lyrics" name="var-lyrics"></textarea>
                 </div>
                 <div class="form-group">
                   <label for="var-name">File Name</label>
-                  <input type="text" id="var-nme" name="var-name">
+                  <input type="text" id="var-name" name="var-name">
                 </div>
                 <div class="button-group">
                   <button type="submit" id="submit-btn" class="submit-btn">Upload Track</button>
@@ -995,12 +1018,12 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
     if (conflicts.length > 0) {
       // Retry with fresh data
       await kv.del('latest_id');
-      await kv.del('seafile:track_files');
+      await kv.del('supabase:track_files');
       latestId = await getLatestId(true);
       const newIdAssignments = trackData.map((_, index) => latestId + index + 1);
       const newConflicts = newIdAssignments.filter(id => existingFiles.some(file => file.id === id));
       if (newConflicts.length > 0) {
-        throw new Error(`ID conflicts detected: ${newConflicts.join(', ')}. Clear cache or check library.`);
+        throw new Error(`ID conflicts detected: ${newConflicts.join(', ')}. Clear cache or check repository.`);
       }
       idAssignments.splice(0, idAssignments.length, ...newIdAssignments);
     }
@@ -1017,7 +1040,8 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
         existingFiles.push({
           id: idAssignments[index],
           slug: generatePermalink(trackData[index].artist, trackData[index].title),
-          file: `${idAssignments[index]}-${generatePermalink(trackData[index].artist, trackData[index].title)}.json`
+          file: `file/${idAssignments[index]}-${generatePermalink(trackData[index].artist, trackData[index].title)}.json`,
+          created_at: new Date().toISOString()
         });
       } catch (error) {
         errors.push({
@@ -1033,7 +1057,7 @@ app.post('/panel', upload.single('json-file'), async (req, res) => {
     }
 
     // Invalidate caches after successful uploads
-    await kv.del('seafile:track_files');
+    await kv.del('supabase:track_files');
     await kv.del('latest_id');
 
     res.redirect(results[0].permalink);
@@ -1057,7 +1081,7 @@ async function processTrack(trackData, existingFiles, newId) {
   }
 
   const slug = generatePermalink(trackData.artist, trackData.title);
-  const filePath = `${newId}-${slug}.json`;
+  const filePath = `file/${newId}-${slug}.json`;
 
   const finalTrackData = {
     id: String(newId),
@@ -1090,7 +1114,7 @@ async function processTrack(trackData, existingFiles, newId) {
   };
 
   const message = `Add track ${newId}: ${trackData.artist} - ${trackData.title}`;
-  await updateSeafileFile(filePath, finalTrackData, message);
+  await updateSupabaseFile(filePath, finalTrackData, message);
 
   return { id: newId, permalink: `/track/${newId}/${generatePermalink(trackData.artist, trackData.title)}` };
 }
@@ -1098,8 +1122,8 @@ async function processTrack(trackData, existingFiles, newId) {
 app.post('/panel/reset-cache', async (req, res) => {
   try {
     const files = await getAllTrackFiles();
-    await Promise.all(files.map(file => kv.del(`seafile:${file.file}`)));
-    await kv.del('seafile:track_files');
+    await Promise.all(files.map(file => kv.del(`supabase:${file.file}`)));
+    await kv.del('supabase:track_files');
     await kv.del('latest_id');
     res.json({ message: 'Cache cleared successfully' });
   } catch (error) {
@@ -1118,7 +1142,7 @@ app.get('/track/:id/:permalink', async (req, res) => {
       return res.status(404).send('Post not found');
     }
 
-    const post = await getSeafileFile(trackItem.file);
+    const post = await getSupabaseFile(trackItem.file);
 
     const related = files
       .filter(item => item.id !== parseInt(id) && item.artist === post.artist)
@@ -1159,7 +1183,7 @@ app.get('/track/:id/:permalink', async (req, res) => {
             </table>
           </div>
           <div class="container">
-            <h2><center>â†“â†“ Download MP3 ~%var-bitrate% kb/s â†“â†“</center></h2>
+            <h2><center>↓↓ Download MP3 ~%var-bitrate% kb/s ↓↓</center></h2>
           </div>
           <audio id="player" controls>
             <source src="%var-link2%" type="audio/mp3">
@@ -1181,19 +1205,19 @@ app.get('/track/:id/:permalink', async (req, res) => {
                 <span itemprop="name">Home</span>
               </a>
               <meta itemprop="position" content="1">
-            </span> Â» 
+            </span> » 
             <span itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
               <a itemtype="https://schema.org/Thing" itemprop="item" href="/search?q=%var-category%">
                 <span itemprop="name">%var-category%</span>
               </a>
               <meta itemprop="position" content="2">
-            </span> Â» 
+            </span> » 
             <span itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
               <a itemtype="https://schema.org/Thing" itemprop="item" href="/search?q=%var-artist%">
                 <span itemprop="name">%var-artist%</span>
               </a>
               <meta itemprop="position" content="3">
-            </span> Â» 
+            </span> » 
             <span itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
               <span itemprop="name">%var-title%</span>
               <meta itemprop="position" content="4">
