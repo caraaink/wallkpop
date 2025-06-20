@@ -1096,11 +1096,15 @@ async function processTrack(trackData, existingFiles, newId) {
 
 app.post('/panel/reset-cache', async (req, res) => {
   try {
-    const files = await getAllTrackFiles();
-    await Promise.all(files.map(file => kv.del(`supabase:${file.file}`)));
-    await kv.del('supabase:track_files');
-    await kv.del('latest_id');
-    res.json({ message: 'Cache cleared successfully' });
+    // Ambil semua kunci yang dimulai dengan 'supabase:' (atau pola lain yang relevan)
+    const keys = await kv.keys('github:*');
+    if (keys.length > 0) {
+      await kv.del(keys); // Hapus semua kunci yang cocok
+      console.log(`Deleted ${keys.length} cache keys`);
+    }
+    await kv.del('github:track_files'); // Pastikan cache utama dihapus
+    await kv.del('latest_id'); // Pastikan ID terbaru dihapus
+    res.json({ message: 'All cache cleared successfully' });
   } catch (error) {
     console.error('Error resetting cache:', error.message);
     res.status(500).json({ error: `Error resetting cache: ${error.message}` });
